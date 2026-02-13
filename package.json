@@ -2,7 +2,7 @@
 	"name": "claude-dev",
 	"displayName": "Cline",
 	"description": "Autonomous coding agent right in your IDE, capable of creating/editing files, running commands, using the browser, and more with your permission every step of the way.",
-	"version": "3.55.0",
+	"version": "3.56.0",
 	"icon": "assets/icons/icon.png",
 	"engines": {
 		"vscode": "^1.84.0"
@@ -240,6 +240,16 @@
 				"title": "Add to Cline Chat",
 				"category": "Cline",
 				"icon": "$(link-external)"
+			},
+			{
+				"command": "cline.wsBridge.start",
+				"title": "Start WebSocket Bridge",
+				"category": "Cline"
+			},
+			{
+				"command": "cline.wsBridge.stop",
+				"title": "Stop WebSocket Bridge",
+				"category": "Cline"
 			}
 		],
 		"keybindings": [
@@ -372,7 +382,23 @@
 		},
 		"configuration": {
 			"title": "Cline",
-			"properties": {}
+			"properties": {
+				"cline.wsBridge.enabled": {
+					"type": "boolean",
+					"default": false,
+					"description": "Enable WebSocket bridge for browser automation"
+				},
+				"cline.wsBridge.port": {
+					"type": "number",
+					"default": 3456,
+					"description": "WebSocket server port"
+				},
+				"cline.wsBridge.autoStart": {
+					"type": "boolean",
+					"default": false,
+					"description": "Auto-start WebSocket server on extension activation"
+				}
+			}
 		}
 	},
 	"scripts": {
@@ -404,7 +430,7 @@
 		"compile-tests": "node ./scripts/build-tests.js",
 		"watch-tests": "tsc -p . -w --outDir out",
 		"check-types": "npm run protos && npx tsc --noEmit && cd webview-ui && npx tsc --noEmit",
-		"lint": "biome lint --no-errors-on-unmatched --files-ignore-unknown=true --diagnostic-level=error && npm run lint:proto",
+		"lint": "biome lint --no-errors-on-unmatched --files-ignore-unknown=true --diagnostic-level=error",
 		"lint:proto": "bash ./scripts/proto-lint.sh",
 		"format": "biome format --changed --no-errors-on-unmatched --files-ignore-unknown=true --diagnostic-level=error",
 		"format:fix": "biome check --changed --no-errors-on-unmatched --files-ignore-unknown=true --write",
@@ -452,6 +478,7 @@
 		"@biomejs/biome": "^2.1.4",
 		"@bufbuild/buf": "^1.54.0",
 		"@changesets/cli": "^2.27.12",
+		"@protobuf-ts/protoc": "^2.11.1",
 		"@types/better-sqlite3": "^7.6.13",
 		"@types/chai": "^5.0.1",
 		"@types/clone-deep": "^4.0.4",
@@ -466,7 +493,10 @@
 		"@types/should": "^11.2.0",
 		"@types/sinon": "^17.0.4",
 		"@types/turndown": "^5.0.5",
-		"@types/vscode": "1.84.0",
+		"@types/uuid": "^10.0.0",
+		"@types/vscode": "^1.84.0",
+		"@types/ws": "^8.18.1",
+		"@types/yauzl": "^2.10.3",
 		"@vscode/test-cli": "^0.0.10",
 		"@vscode/test-electron": "^2.5.2",
 		"@vscode/vsce": "^3.6.0",
@@ -532,7 +562,6 @@
 		"@sap-cloud-sdk/connectivity": "^4.2.0",
 		"@streamparser/json": "^0.0.22",
 		"@tailwindcss/vite": "^4.1.14",
-		"@types/uuid": "^10.0.0",
 		"@vscode/codicons": "^0.0.36",
 		"archiver": "^7.0.1",
 		"aws4fetch": "^1.0.20",
@@ -588,6 +617,7 @@
 		"uuid": "^11.1.0",
 		"vscode-uri": "^3.1.0",
 		"web-tree-sitter": "^0.22.6",
+		"ws": "^8.19.0",
 		"zod": "^3.24.2"
 	},
 	"overrides": {

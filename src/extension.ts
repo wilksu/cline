@@ -48,6 +48,7 @@ import { LogoutReason } from "./services/auth/types"
 import { telemetryService } from "./services/telemetry"
 import { ClineTempManager } from "./services/temp"
 import { SharedUriHandler } from "./services/uri/SharedUriHandler"
+import { WsBridge } from "./services/ws-bridge"
 import { ShowMessageType } from "./shared/proto/host/window"
 import { fileExistsAtPath } from "./utils/fs"
 /*
@@ -98,6 +99,9 @@ export async function activate(context: vscode.ExtensionContext) {
 	const testModeWatchers = await initializeTestMode(webview)
 	// Initialize test mode and add disposables to context
 	context.subscriptions.push(...testModeWatchers)
+
+	// Initialize WebSocket Bridge for browser automation
+	WsBridge.register(context)
 
 	vscode.commands.executeCommand("setContext", "cline.isDevMode", IS_DEV && IS_DEV === "true")
 
@@ -633,15 +637,35 @@ async function getBinaryLocation(name: string): Promise<string> {
 		return (await fileExistsAtPath(fullPath)) ? fullPath : undefined
 	}
 
-	const binPath =
-		(await checkPath("node_modules/@vscode/ripgrep/bin/")) ||
-		(await checkPath("node_modules/vscode-ripgrep/bin")) ||
-		(await checkPath("node_modules.asar.unpacked/vscode-ripgrep/bin/")) ||
-		(await checkPath("node_modules.asar.unpacked/@vscode/ripgrep/bin/"))
-	if (!binPath) {
-		throw new Error("Could not find ripgrep binary")
+	const pathsToCheck = [
+		"node_modules/@vscode/ripgrep/bin/",
+		"node_modules/vscode-ripgrep/bin",
+		"node_modules.asar.unpacked/vscode-ripgrep/bin/",
+		"node_modules.asar.unpacked/@vscode/ripgrep/bin/",
+	]
+
+	for (const p of pathsToCheck) {
+		const found = await checkPath(p)
+		if (found) return found
 	}
-	return binPath
+
+	// Check for dev mode binaries downloaded via scripts/download-ripgrep.mjs
+	if (process.env.DEV_WORKSPACE_FOLDER) {
+		let platform = process.platform as string
+		if (platform === "win32") {
+			platform = "win"
+		}
+		const arch = process.arch
+		const folder = `${platform}-${arch}`
+		const binName = process.platform === "win32" ? "rg.exe" : "rg"
+
+		const devBinPath = path.join(process.env.DEV_WORKSPACE_FOLDER, "dist-standalone", "ripgrep-binaries", folder, binName)
+		if (await fileExistsAtPath(devBinPath)) {
+			return devBinPath
+		}
+	}
+
+	throw new Error(`Could not find ripgrep binary. Checked relative to ${vscode.env.appRoot}: ${pathsToCheck.join(", ")}`)
 }
 
 // This method is called when your extension is deactivated

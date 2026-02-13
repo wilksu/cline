@@ -121,8 +121,8 @@ async function extractZip(zipPath, destDir) {
 	console.log(`  Extracting zip to: ${destDir}`)
 
 	try {
-		// Use -o to overwrite existing files without prompting
-		await execAsync(`unzip -o -q "${zipPath}" -d "${destDir}"`)
+		// Use system tar which supports zip on modern Windows/Mac/Linux
+		await execAsync(`tar -xf "${zipPath}" -C "${destDir}"`)
 
 		// Find the extracted directory (usually ripgrep-VERSION-arch)
 		const items = fs.readdirSync(destDir)

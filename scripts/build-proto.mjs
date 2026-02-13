@@ -12,7 +12,8 @@ import { main as generateHostBridgeClient } from "./generate-host-bridge-client.
 import { main as generateProtoBusSetup } from "./generate-protobus-setup.mjs"
 
 const require = createRequire(import.meta.url)
-const PROTOC = path.join(require.resolve("grpc-tools"), "../bin/protoc")
+// Use @protobuf-ts/protoc instead of grpc-tools (grpc-tools crashes on Windows)
+const PROTOC = "node " + path.resolve("node_modules/@protobuf-ts/protoc/protoc.js")
 
 const PROTO_DIR = path.resolve("proto")
 const TS_OUT_DIR = path.resolve("src/shared/proto")
