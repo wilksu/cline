@@ -151,13 +151,9 @@ export class FileEditor {
 	private async generateSuccessResponse(actionMessage: string, targetPath: string, relativePath: string): Promise<string> {
 		try {
 			const newHash = await this.getFileHash(targetPath)
-			const content = await fs.readFile(targetPath, "utf8")
-			const lines = content.split("\n")
-			const numberedContent = lines.map((line, idx) => `${idx + 1} | ${line}`).join("\n")
-
-			return `${actionMessage}\n\n[SUCCESS] Here is the updated file content. Please use this new reference for future edits:\n--- ${relativePath}[${newHash}] ---\n\`\`\`\n${numberedContent}\n\`\`\``
+			return `[SUCCESS] ${actionMessage}\nNew Hash Reference: ${relativePath}[${newHash}]`
 		} catch (e) {
-			return `${actionMessage}\n(Warning: Failed to read back updated content)`
+			return `[SUCCESS] ${actionMessage}\n(Warning: Failed to generate new hash)`
 		}
 	}
 

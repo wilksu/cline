@@ -3,7 +3,6 @@
  * Adapted from ws-agent/toolExecutor.ts
  */
 
-import * as fs from "fs/promises"
 import * as path from "path"
 import { HostProvider } from "@/hosts/host-provider"
 import { BaseTool } from "./BaseTool"
@@ -88,14 +87,7 @@ export async function executeCommands(inputText: string): Promise<string> {
 					let finalOutput = msg
 
 					if (isEdit) {
-						try {
-							// Using direct fs read for error recovery
-							const originalContent = await fs.readFile(targetPath, "utf8")
-
-							finalOutput = `The edit failed. \nError: ${msg}\n\nI've retrieved the current content of "${fPath}" for you. Please use this to provide a new, exact SEARCH/REPLACE block or use line-based editing (<<<<<<< LINES: start-end):\n\n\`\`\`\n${originalContent}\n\`\`\``
-						} catch (readError) {
-							finalOutput += `\n(Also failed to read file content: ${readError instanceof Error ? readError.message : String(readError)})`
-						}
+						finalOutput = `The edit failed.\nError: ${msg}\n\nPlease issue a 'read: ${fPath}' command to retrieve the latest content and its correct [Hash], then try your edit again.`
 					}
 
 					results.push({

@@ -7,6 +7,7 @@ import { CommandPermissionController } from "@/core/permissions/CommandPermissio
 import { StateManager } from "@/core/storage/StateManager"
 import { HostProvider } from "@/hosts/host-provider"
 import { BaseTool } from "../BaseTool"
+import { getWorkspaceIgnoreController } from "../ignore"
 import type { ToolResult } from "../types"
 import { getErrorMessage } from "../utils"
 
@@ -33,13 +34,20 @@ export class RunTool extends BaseTool<RunParams> {
 
 	async execute(params: RunParams): Promise<ToolResult> {
 		try {
-			// 1. Check Global Permission Controller (Env Vars)
+			// 1. Check Global Permission Controller (Command Blacklist/Whitelist)
 			const permissionResult = this.permissionController.validateCommand(params.command)
 			if (!permissionResult.allowed) {
 				throw new Error(`Command denied by CLINE_COMMAND_PERMISSIONS. Reason: ${permissionResult.reason}`)
 			}
 
-			// 2. Check User Auto-Approval Settings
+			// 2. Check native ClineIgnore rules (Prevent `cat .env` bypass)
+			const ignoreController = await getWorkspaceIgnoreController(this.workspaceRoot)
+			const ignoredFileAttemptedToAccess = ignoreController.validateCommand(params.command)
+			if (ignoredFileAttemptedToAccess) {
+				throw new Error(`Command execution denied. Attempted to access ignored file: ${ignoredFileAttemptedToAccess}`)
+			}
+
+			// 3. Check User Auto-Approval Settings
 			const stateManager = StateManager.get()
 			const autoApprovalSettings = stateManager.getGlobalSettingsKey("autoApprovalSettings")
 
