@@ -1,0 +1,62 @@
+name: Custom Cline Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      cline_version:
+        description: 'Cline version to build (tag or branch)'
+        required: true
+        default: 'v3.55.0'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Cline Source
+        uses: actions/checkout@v4
+        with:
+          repository: 'cline/cline'
+          ref: ${{ github.event.inputs.cline_version }}
+          path: 'cline-main'
+
+      - name: Checkout Custom Patch
+        uses: actions/checkout@v4
+        with:
+          path: 'patch-source'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: 'cline-main/package.json'
+
+      - name: Sync Patch Files
+        run: |
+          cp -r patch-source/custom-integration cline-main/
+          cd cline-main
+          # 运行你刚才修正过的补丁脚本
+          node custom-integration/scripts/apply-patch.mjs
+
+      - name: Install Dependencies
+        run: |
+          cd cline-main
+          # 在 GitHub 环境下，我们可以安全地安装依赖
+          npm install
+          npm install ws @types/ws --save-dev
+
+      - name: Build and Package
+        run: |
+          cd cline-main
+          # 编译 Protobuf (这是 Cline 运行的先决条件)
+          npm run protos
+          # 使用 esbuild 进行打包，注意排除 vscode
+          npx esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --minify
+          # 绕过 prepublish 脚本直接打包成 vsix
+          npx vsce package --no-dependencies --out ../custom-cline.vsix
+
+      - name: Upload VSIX
+        uses: actions/upload-artifact@v4
+        with:
+          name: custom-cline-${{ github.event.inputs.cline_version }}
+          path: custom-cline.vsix

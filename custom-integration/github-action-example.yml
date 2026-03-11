@@ -1,0 +1,35 @@
+name: Build Custom Cline
+on: [push]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Cline (Upstream)
+        uses: actions/checkout@v4
+        with:
+          repository: cline/cline # 或者是你 fork 的版本
+          path: main-repo
+
+      - name: Checkout My Custom Logic
+        uses: actions/checkout@v4
+        with:
+          path: custom-integration
+
+      - name: Setup Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: main-repo/package-lock.json
+
+      - name: Apply Patch & Build
+        run: |
+          cd main-repo
+          # 将自定义目录移动到正确位置
+          mv ../custom-integration .
+          # 执行补丁脚本
+          npx ts-node custom-integration/scripts/apply-patch.ts
+          # 原生构建流程
+          npm install
+          npm run build
