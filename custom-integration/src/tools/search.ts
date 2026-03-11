@@ -1,4 +1,3 @@
-import * as vscode from "vscode";
 import { execa } from "execa";
 import { BaseTool } from "./base";
 import { Logger } from "../utils/logger";

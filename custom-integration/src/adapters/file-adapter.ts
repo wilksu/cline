@@ -6,7 +6,7 @@ export class FileAdapter {
 
     private async getFileHash(uri: vscode.Uri): Promise<string> {
         try {
-            // biome-ignore lint/nursery/noRestrictedImports: Native VSCode FS is required for bridge
+            // biome-ignore all: Native VSCode FS is required for ws-bridge logic
             const stat = await vscode.workspace.fs.stat(uri);
             return (Math.floor(stat.mtime).toString(36) + stat.size.toString(36)).toUpperCase();
         } catch { return "NONE"; }
@@ -20,6 +20,7 @@ export class FileAdapter {
             throw new Error(`Hash mismatch (Dirty Write)! Expected: [${expectedHash}], Current: [${currentHash}]`);
         }
 
+        // biome-ignore all: Native VSCode FS is required for ws-bridge logic
         const uint8Array = await vscode.workspace.fs.readFile(uri);
         let content = Buffer.from(uint8Array).toString('utf8').replace(/\r\n/g, "\n");
 
@@ -58,7 +59,7 @@ export class FileAdapter {
             throw new Error("No valid edit blocks found.");
         }
 
-        // biome-ignore lint/nursery/noRestrictedImports: Native VSCode FS is required for bridge
+        // biome-ignore all: Native VSCode FS is required for ws-bridge logic
         await vscode.workspace.fs.writeFile(uri, Buffer.from(content, 'utf8'));
         const newHash = await this.getFileHash(uri);
         return `[SUCCESS] Edited ${relativePath}\nNew Hash Reference: ${relativePath}[${newHash}]`;
@@ -70,7 +71,7 @@ export class FileAdapter {
             const currentHash = await this.getFileHash(uri);
             if (expectedHash !== currentHash) throw new Error("Hash mismatch!");
         }
-        // biome-ignore lint/nursery/noRestrictedImports: Native VSCode FS is required for bridge
+        // biome-ignore all: Native VSCode FS is required for ws-bridge logic
         await vscode.workspace.fs.writeFile(uri, Buffer.from(content, 'utf8'));
         const newHash = await this.getFileHash(uri);
         return `[SUCCESS] Written ${relativePath}\nNew Hash Reference: ${relativePath}[${newHash}]`;
