@@ -27,7 +27,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
           cache-dependency-path: 'cline-main/package.json'
 
@@ -35,24 +35,34 @@ jobs:
         run: |
           cp -r patch-source/custom-integration cline-main/
           cd cline-main
-          # 运行你刚才修正过的补丁脚本
           node custom-integration/scripts/apply-patch.mjs
 
       - name: Install Dependencies
         run: |
           cd cline-main
-          # 在 GitHub 环境下，我们可以安全地安装依赖
-          npm install
+          # 安装根目录依赖
+          npm install --include=optional
+          # 安装补丁必需的 ws
           npm install ws @types/ws --save-dev
+          # 关键：安装 Webview 依赖
+          cd webview-ui && npm install --include=optional
 
       - name: Build and Package
+        env:
+          CLINE_ENVIRONMENT: production
+          NODE_ENV: production
         run: |
           cd cline-main
-          # 编译 Protobuf (这是 Cline 运行的先决条件)
+          # 1. 下载必要的二进制工具
+          npm run download-ripgrep
+          # 2. 编译 Protobuf 协议
           npm run protos
-          # 使用 esbuild 进行打包，注意排除 vscode
+          # 3. 编译前端 (Webview) - 使用 vite 直接构建，跳过 tsc 检查以防报错
+          cd webview-ui && npx vite build
+          # 4. 编译后端 (Extension)
+          cd ..
           npx esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --minify
-          # 绕过 prepublish 脚本直接打包成 vsix
+          # 5. 打包 VSIX
           npx vsce package --no-dependencies --out ../custom-cline.vsix
 
       - name: Upload VSIX
