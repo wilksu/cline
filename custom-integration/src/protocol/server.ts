@@ -15,6 +15,7 @@ export const WsBridgeServer = {
         try {
             wss = new WebSocketServer({ port });
         } catch (err: any) {
+            // biome-ignore lint/nursery/noRestrictedImports: Window notifications are required
             vscode.window.showErrorMessage(`Failed to start Ws-Bridge: Port ${port} is already in use.`);
             return;
         }
@@ -32,6 +33,7 @@ export const WsBridgeServer = {
             });
         });
 
+        // biome-ignore lint/nursery/noRestrictedImports: Window notifications are required
         vscode.window.showInformationMessage(`Cline Ws-Bridge started on port ${port}`);
     },
 

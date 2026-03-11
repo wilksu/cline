@@ -1,5 +1,3 @@
-import { Logger } from "../utils/logger";
-
 export interface ParsedCommand {
     type: 'tool' | 'action';
     name: string;

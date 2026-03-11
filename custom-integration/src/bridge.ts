@@ -12,7 +12,9 @@ export const WsBridge = {
         
         // 注册控制命令，方便用户手动开关
         context.subscriptions.push(
+            // biome-ignore lint/nursery/noRestrictedImports: Command registration is required
             vscode.commands.registerCommand("cline.wsBridge.start", () => WsBridgeServer.start()),
+            // biome-ignore lint/nursery/noRestrictedImports: Command registration is required
             vscode.commands.registerCommand("cline.wsBridge.stop", () => WsBridgeServer.stop())
         );
 

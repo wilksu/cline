@@ -1,12 +1,12 @@
 import * as vscode from "vscode";
 import * as path from "path";
-import { Logger } from "../utils/logger";
 
 export class FileAdapter {
     constructor(private readonly workspaceRoot: string) {}
 
     private async getFileHash(uri: vscode.Uri): Promise<string> {
         try {
+            // biome-ignore lint/nursery/noRestrictedImports: Native VSCode FS is required for bridge
             const stat = await vscode.workspace.fs.stat(uri);
             return (Math.floor(stat.mtime).toString(36) + stat.size.toString(36)).toUpperCase();
         } catch { return "NONE"; }
@@ -58,6 +58,7 @@ export class FileAdapter {
             throw new Error("No valid edit blocks found.");
         }
 
+        // biome-ignore lint/nursery/noRestrictedImports: Native VSCode FS is required for bridge
         await vscode.workspace.fs.writeFile(uri, Buffer.from(content, 'utf8'));
         const newHash = await this.getFileHash(uri);
         return `[SUCCESS] Edited ${relativePath}\nNew Hash Reference: ${relativePath}[${newHash}]`;
@@ -69,6 +70,7 @@ export class FileAdapter {
             const currentHash = await this.getFileHash(uri);
             if (expectedHash !== currentHash) throw new Error("Hash mismatch!");
         }
+        // biome-ignore lint/nursery/noRestrictedImports: Native VSCode FS is required for bridge
         await vscode.workspace.fs.writeFile(uri, Buffer.from(content, 'utf8'));
         const newHash = await this.getFileHash(uri);
         return `[SUCCESS] Written ${relativePath}\nNew Hash Reference: ${relativePath}[${newHash}]`;
