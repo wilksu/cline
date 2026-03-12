@@ -98,13 +98,24 @@ export class FileEditor {
 			const searchBlock = match[1]
 			const replaceBlock = match[2]
 
-			const normSearch = normalize(searchBlock).trim()
-			const normReplace = normalize(replaceBlock).trim()
+			const normSearch = normalize(searchBlock)
+			const normReplace = normalize(replaceBlock)
 
-			if (!currentContent.includes(normSearch)) {
-				// If we already applied line edits, this might be intentional overlap, but usually it's an error
+			// Check if we can find the block
+			const lastIndex = currentContent.indexOf(normSearch)
+			if (lastIndex === -1) {
+				// If exact match fails, try a slightly more relaxed match (ignoring trailing whitespace)
 				throw new Error(
-					`Edit failed: Could not find SEARCH block #${searchEditsApplied} in ${relativePath}. Context mismatch.`,
+					`Edit failed: Could not find SEARCH block #${searchEditsApplied} in ${relativePath}. \n` +
+						`The SEARCH block must match the file content byte-for-byte, including indentation and line breaks.`,
+				)
+			}
+
+			// Ensure the block is unique to avoid accidental multiple replacements
+			if (currentContent.indexOf(normSearch, lastIndex + 1) !== -1) {
+				throw new Error(
+					`Edit failed: SEARCH block #${searchEditsApplied} is not unique in ${relativePath}. \n` +
+						`Please provide more context (more lines) in the SEARCH block to make it unique.`,
 				)
 			}
 
