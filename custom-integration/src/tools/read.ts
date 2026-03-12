@@ -11,12 +11,12 @@ export class ReadTool extends BaseTool {
         const results = await Promise.all(args.map(async (fPath) => {
             const uri = vscode.Uri.file(path.join(this.workspaceRoot, fPath));
             try {
-                // biome-ignore all: Native VSCode FS is required
+                // biome-ignore lint: Native VSCode FS is required
                 const content = await vscode.workspace.fs.readFile(uri);
                 const text = Buffer.from(content).toString('utf8');
                 
                 // 这里暂时模拟获取 Hash 的逻辑（稍后在 FileAdapter 增强）
-                // biome-ignore all: Native VSCode FS is required
+                // biome-ignore lint: Native VSCode FS is required
                 const stat = await vscode.workspace.fs.stat(uri);
                 const hash = (Math.floor(stat.mtime).toString(36) + stat.size.toString(36)).toUpperCase();
                 

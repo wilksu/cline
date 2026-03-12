@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 
-// biome-ignore all: Output channel creation is required for logging
+// biome-ignore lint: Output channel creation is required for logging
 const outputChannel = vscode.window.createOutputChannel("Cline Ws-Bridge");
 
 export const Logger = {
