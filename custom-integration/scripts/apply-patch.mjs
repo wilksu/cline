@@ -34,19 +34,9 @@ async function patch() {
     } else {
         // 生产模式：物理复制
         fs.mkdirSync(TARGET_DIR, { recursive: true });
-        // 使用简单的 cross-platform 复制逻辑
+        // 使用 Node.js 原生递归复制逻辑，确保跨平台稳定性
         const sourceSrc = path.join(CUSTOM_DIR, 'src');
-        const files = fs.readdirSync(sourceSrc);
-        for (const file of files) {
-            const srcFile = path.join(sourceSrc, file);
-            const destFile = path.join(TARGET_DIR, file);
-            if (fs.statSync(srcFile).isDirectory()) {
-                // 递归简单处理
-                execSync(`cp -r "${srcFile}" "${TARGET_DIR}/"`);
-            } else {
-                fs.copyFileSync(srcFile, destFile);
-            }
-        }
+        fs.cpSync(sourceSrc, TARGET_DIR, { recursive: true });
         console.log('📦 Physically copied files to src/services/ws-bridge');
     }
 

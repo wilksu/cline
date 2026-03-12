@@ -1,5 +1,5 @@
 import { WebSocketServer } from "ws";
-import { HostProvider } from "../../../src/hosts/host-provider";
+import { HostProvider } from "@hosts/host-provider";
 import { Logger } from "../utils/logger";
 import { dispatchCommand } from "./dispatcher";
 
@@ -9,8 +9,6 @@ export const WsBridgeServer = {
     async start() {
         if (wss) return;
         
-        // 注意：HostProvider 不直接暴露 getConfiguration，通常通过 state 或 env 注入
-        // 这里的补丁为了保持功能，尝试从系统环境变量或默认值获取
         const port = Number(process.env.CLINE_WS_PORT) || 3456;
         
         try {
@@ -19,7 +17,7 @@ export const WsBridgeServer = {
             if (HostProvider.isInitialized()) {
                 HostProvider.window.showMessage({ 
                     message: `Failed to start Ws-Bridge: Port ${port} is already in use.`,
-                    type: 1 // Error
+                    type: 1 
                 });
             }
             return;
@@ -41,7 +39,7 @@ export const WsBridgeServer = {
         if (HostProvider.isInitialized()) {
             HostProvider.window.showMessage({
                 message: `Cline Ws-Bridge started on port ${port}`,
-                type: 3 // Info
+                type: 3 
             });
         }
     },

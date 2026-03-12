@@ -1,7 +1,7 @@
 import { execa } from "execa";
 import { BaseTool } from "./base";
 import { Logger } from "../utils/logger";
-import { HostProvider } from "../../../src/hosts/host-provider";
+import { HostProvider } from "@hosts/host-provider";
 
 export class SearchTool extends BaseTool {
     async execute(args: string[]): Promise<string> {
@@ -9,8 +9,6 @@ export class SearchTool extends BaseTool {
         const subDir = args[1] || ".";
         
         try {
-            // 动态获取 Cline 已经配置好的 ripgrep 路径
-            // 这里我们调用 HostProvider 预定义的二进制定位逻辑
             const rgPath = await HostProvider.get().getBinaryLocation("rg");
             
             Logger.info(`[Search] Searching for "${pattern}" using ${rgPath}`);
@@ -26,7 +24,7 @@ export class SearchTool extends BaseTool {
                 subDir
             ], {
                 cwd: this.workspaceRoot,
-                reject: false // 允许 rg 返回 1 (未找到匹配)
+                reject: false 
             });
 
             return stdout || "(No matches found)";

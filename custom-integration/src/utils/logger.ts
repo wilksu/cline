@@ -1,4 +1,4 @@
-import { HostProvider } from "../../../src/hosts/host-provider";
+import { HostProvider } from "@hosts/host-provider";
 
 export const Logger = {
     info(message: string, ...args: any[]) {

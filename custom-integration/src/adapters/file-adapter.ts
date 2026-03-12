@@ -1,6 +1,6 @@
 import * as path from "path";
 import * as fs from "fs/promises";
-import { writeFile, fileExistsAtPath } from "../../../src/utils/fs";
+import { writeFile, fileExistsAtPath } from "@utils/fs";
 
 export class FileAdapter {
     constructor(private readonly workspaceRoot: string) {}
@@ -27,7 +27,6 @@ export class FileAdapter {
         let content = await fs.readFile(absolutePath, 'utf8');
         content = content.replace(/\r\n/g, "\n");
 
-        // 处理 SEARCH/REPLACE 模式
         const blockRegex = /<<<<<<< SEARCH\n([\s\S]*?)\n=======\n([\s\S]*?)\n>>>>>>> REPLACE/g;
         let match;
         let searchEditsApplied = 0;

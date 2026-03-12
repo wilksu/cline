@@ -1,4 +1,4 @@
-import { HostProvider } from "../../../src/hosts/host-provider";
+import { HostProvider } from "@hosts/host-provider";
 import { parseInput } from "./parser";
 import { LSTool } from "../tools/ls";
 import { ReadTool } from "../tools/read";
