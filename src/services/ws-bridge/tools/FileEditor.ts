@@ -108,7 +108,7 @@ export class FileEditor {
 				)
 			}
 
-			currentContent = currentContent.replace(normSearch, normReplace)
+			currentContent = currentContent.replace(normSearch, () => normReplace)
 		}
 
 		if (lineEditsApplied === 0 && searchEditsApplied === 0) {

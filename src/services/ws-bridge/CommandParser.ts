@@ -32,17 +32,21 @@ export const TOOL_NAMES: Record<string, string> = {
 
 function tokenize(input: string): string[] {
 	const normalized = input.trim()
-	const regex = /[^\s"']+|"([^"]*)"|'([^']*)'/g
+	// Match: 1. Double quoted strings 2. Single quoted strings 3. Unquoted space-separated words
+	const regex = /"([^"]*)"|'([^']*)'|[^\s"']+/g
 	const args: string[] = []
-	for (let match = regex.exec(normalized); match !== null; match = regex.exec(normalized)) {
-		const val = match[1] !== undefined ? match[1] : match[2] !== undefined ? match[2] : match[0]
-		args.push(val)
+	let match
+	while ((match = regex.exec(normalized)) !== null) {
+		// match[0] is the full text including the quotes if present
+		args.push(match[0])
 	}
 	return args
 }
 
 function trimQuotes(s: string): string {
-	const m = s.match(/^([`'"])(.*)\\1$/)
+	// Only strip if the string starts and ends with the SAME quote character
+	// and there are no other instances of that quote at the very start/end
+	const m = s.match(/^(['"`])([\s\S]*)\1$/)
 	return m ? m[2] : s
 }
 
@@ -93,6 +97,7 @@ export function parseBatchInput(input: string): ParsedCommand[] {
 
 	for (let i = 0; i < lines.length; i++) {
 		const line = lines[i]
+		// Handle cases where the entire line is wrapped in quotes by some LLMs
 		const trimmed = trimQuotes(line.trim())
 		if (!trimmed) {
 			continue
@@ -178,8 +183,16 @@ export function parseBatchInput(input: string): ParsedCommand[] {
 
 			if (TOOL_NAMES[cmdName]) {
 				const rawArgs = tokenize(rawArgsString)
+				const isShellCmd = cmdName === "run" || cmdName === "exec" || cmdName === "cmd"
+
 				const args = rawArgs.map((arg) => {
-					const cleanArg = arg.replace(/\\_/g, "_")
+					let cleanArg = arg.replace(/\\_/g, "_")
+
+					// If it's NOT a shell command, we need to strip quotes for FS operations
+					if (!isShellCmd) {
+						cleanArg = trimQuotes(cleanArg)
+					}
+
 					// Strip hash so underlying tools (like ReadTool) get the pure file path
 					return extractPathAndHash(cleanArg).path
 				})
