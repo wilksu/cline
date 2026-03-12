@@ -1,5 +1,6 @@
 import { WebSocketServer } from "ws";
 import { HostProvider } from "@hosts/host-provider";
+import { ShowMessageType } from "@shared/proto/host/window";
 import { Logger } from "../utils/logger";
 import { dispatchCommand } from "./dispatcher";
 
@@ -17,7 +18,7 @@ export const WsBridgeServer = {
             if (HostProvider.isInitialized()) {
                 HostProvider.window.showMessage({ 
                     message: `Failed to start Ws-Bridge: Port ${port} is already in use.`,
-                    type: 1 
+                    type: ShowMessageType.ERROR
                 });
             }
             return;
@@ -39,7 +40,7 @@ export const WsBridgeServer = {
         if (HostProvider.isInitialized()) {
             HostProvider.window.showMessage({
                 message: `Cline Ws-Bridge started on port ${port}`,
-                type: 3 
+                type: ShowMessageType.INFORMATION
             });
         }
     },
