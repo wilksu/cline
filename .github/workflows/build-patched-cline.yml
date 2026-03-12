@@ -1,0 +1,49 @@
+name: Build Patched Cline
+
+on:
+  workflow_dispatch:
+    inputs:
+      cline_tag:
+        description: 'Cline Version Tag (e.g. v3.57.0)'
+        required: true
+        default: 'main'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Bridge Repo (Current)
+        uses: actions/checkout@v4
+        with:
+          path: bridge-source
+
+      - name: Checkout Cline (Official)
+        uses: actions/checkout@v4
+        with:
+          repository: 'cline/cline'
+          ref: ${{ github.event.inputs.cline_tag }}
+          path: cline-source
+
+      - name: 🧩 Apply Patch and Integrate Bridge
+        run: |
+          # 1. 创建目标目录并拷贝 bridge 核心代码
+          mkdir -p cline-source/src/services/ws-bridge
+          cp -r bridge-source/src/services/ws-bridge/* cline-source/src/services/ws-bridge/
+          
+          # 2. 运行补丁脚本修改 Cline 核心文件
+          export CLINE_DIR=$(pwd)/cline-source
+          node bridge-source/scripts/apply-patch.mjs
+          
+      - name: 🏗️ Install and Build VSIX
+        working-directory: cline-source
+        run: |
+          npm install
+          npm run install:all
+          # 编译并打包
+          npx vsce package --out ../patched-cline.vsix
+
+      - name: 📦 Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cline-${{ github.event.inputs.cline_tag }}-wsbridge
+          path: patched-cline.vsix
