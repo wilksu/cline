@@ -1,18 +1,24 @@
-import * as vscode from "vscode";
 import * as path from "path";
+import * as fs from "fs/promises";
 import { BaseTool } from "./base";
 
 export class LSTool extends BaseTool {
     async execute(args: string[]): Promise<string> {
         const relativePath = args[0] || ".";
-        const targetUri = vscode.Uri.file(path.join(this.workspaceRoot, relativePath));
+        const absolutePath = path.join(this.workspaceRoot, relativePath);
 
         try {
-            const entries = await vscode.workspace.fs.readDirectory(targetUri);
+            const entries = await fs.readdir(absolutePath, { withFileTypes: true });
             const output = entries
-                .map(([name, type]) => {
-                    const isDir = type === vscode.FileType.Directory;
-                    return `${isDir ? '[DIR] ' : '      '}${name}`;
+                .map((entry) => {
+                    const isDir = entry.isDirectory();
+                    return `${isDir ? '[DIR] ' : '      '}${entry.name}`;
+                })
+                .sort((a, b) => {
+                    // 文件夹排在前面
+                    if (a.startsWith('[DIR]') && !b.startsWith('[DIR]')) return -1;
+                    if (!a.startsWith('[DIR]') && b.startsWith('[DIR]')) return 1;
+                    return a.localeCompare(b);
                 })
                 .join("\n");
             

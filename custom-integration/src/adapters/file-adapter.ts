@@ -1,26 +1,34 @@
-import * as vscode from "vscode";
 import * as path from "path";
+import * as fs from "fs/promises";
+import { writeFile, fileExistsAtPath } from "../../../src/utils/fs";
 
 export class FileAdapter {
     constructor(private readonly workspaceRoot: string) {}
 
-    private async getFileHash(uri: vscode.Uri): Promise<string> {
+    private async getFileHash(absolutePath: string): Promise<string> {
         try {
-            // biome-ignore lint: Native VSCode FS is required for ws-bridge logic
-            const stat = await vscode.workspace.fs.stat(uri);
-            return (Math.floor(stat.mtime).toString(36) + stat.size.toString(36)).toUpperCase();
+            const stat = await fs.stat(absolutePath);
+            return (Math.floor(stat.mtime.getTime()).toString(36) + stat.size.toString(36)).toUpperCase();
         } catch { return "NONE"; }
     }
 
     async applyEdit(relativePath: string, codeBlock: string, expectedHash?: string): Promise<string> {
-        const uri = vscode.Uri.file(path.join(this.workspaceRoot, relativePath));
-        const currentHash = await this.getFileHash(uri);
+        const absolutePath = path.join(this.workspaceRoot, relativePath);
+        const currentHash = await this.getFileHash(absolutePath);
 
-        if (expectedHash && expectedHash !== currentHash) {
+        if (expectedHash && expectedHash !== "NONE" && expectedHash !== currentHash) {
             throw new Error(`Hash mismatch (Dirty Write)! Expected: [${expectedHash}], Current: [${currentHash}]`);
         }
 
-        \n([\s\S]*?)\n=======\n([\s\S]*?)\n>>>>>>> REPLACE/g;
+        if (!(await fileExistsAtPath(absolutePath))) {
+            throw new Error(`File not found: ${relativePath}`);
+        }
+
+        let content = await fs.readFile(absolutePath, 'utf8');
+        content = content.replace(/\r\n/g, "\n");
+
+        // 处理 SEARCH/REPLACE 模式
+        const blockRegex = /<<<<<<< SEARCH\n([\s\S]*?)\n=======\n([\s\S]*?)\n>>>>>>> REPLACE/g;
         let match;
         let searchEditsApplied = 0;
 
@@ -39,21 +47,19 @@ export class FileAdapter {
             throw new Error("No valid SEARCH/REPLACE blocks found.");
         }
 
-        // biome-ignore lint: Native VSCode FS is required for ws-bridge logic
-        await vscode.workspace.fs.writeFile(uri, Buffer.from(content, 'utf8'));
-        const newHash = await this.getFileHash(uri);
+        await writeFile(absolutePath, content);
+        const newHash = await this.getFileHash(absolutePath);
         return `[SUCCESS] Edited ${relativePath}\nNew Hash Reference: ${relativePath}[${newHash}]`;
     }
 
     async writeFile(relativePath: string, content: string, expectedHash?: string): Promise<string> {
-        const uri = vscode.Uri.file(path.join(this.workspaceRoot, relativePath));
-        if (expectedHash) {
-            const currentHash = await this.getFileHash(uri);
+        const absolutePath = path.join(this.workspaceRoot, relativePath);
+        if (expectedHash && expectedHash !== "NONE") {
+            const currentHash = await this.getFileHash(absolutePath);
             if (expectedHash !== currentHash) throw new Error("Hash mismatch!");
         }
-        // biome-ignore lint: Native VSCode FS is required for ws-bridge logic
-        await vscode.workspace.fs.writeFile(uri, Buffer.from(content, 'utf8'));
-        const newHash = await this.getFileHash(uri);
+        await writeFile(absolutePath, content);
+        const newHash = await this.getFileHash(absolutePath);
         return `[SUCCESS] Written ${relativePath}\nNew Hash Reference: ${relativePath}[${newHash}]`;
     }
 }

@@ -1,5 +1,5 @@
 import { WebSocketServer } from "ws";
-import * as vscode from "vscode";
+import { HostProvider } from "../../../src/hosts/host-provider";
 import { Logger } from "../utils/logger";
 import { dispatchCommand } from "./dispatcher";
 
@@ -9,14 +9,19 @@ export const WsBridgeServer = {
     async start() {
         if (wss) return;
         
-        const config = vscode.workspace.getConfiguration("cline.wsBridge");
-        const port = config.get<number>("port", 3456);
+        // 注意：HostProvider 不直接暴露 getConfiguration，通常通过 state 或 env 注入
+        // 这里的补丁为了保持功能，尝试从系统环境变量或默认值获取
+        const port = Number(process.env.CLINE_WS_PORT) || 3456;
         
         try {
             wss = new WebSocketServer({ port });
         } catch (err: any) {
-            // biome-ignore lint: Native VSCode UI is required for ws-bridge feedback
-            vscode.window.showErrorMessage(`Failed to start Ws-Bridge: Port ${port} is already in use.`);
+            if (HostProvider.isInitialized()) {
+                HostProvider.window.showMessage({ 
+                    message: `Failed to start Ws-Bridge: Port ${port} is already in use.`,
+                    type: 1 // Error
+                });
+            }
             return;
         }
 
@@ -33,8 +38,12 @@ export const WsBridgeServer = {
             });
         });
 
-        // biome-ignore lint: Native VSCode UI is required for ws-bridge feedback
-        vscode.window.showInformationMessage(`Cline Ws-Bridge started on port ${port}`);
+        if (HostProvider.isInitialized()) {
+            HostProvider.window.showMessage({
+                message: `Cline Ws-Bridge started on port ${port}`,
+                type: 3 // Info
+            });
+        }
     },
 
     stop() {

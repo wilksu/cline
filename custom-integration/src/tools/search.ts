@@ -1,7 +1,7 @@
 import { execa } from "execa";
 import { BaseTool } from "./base";
 import { Logger } from "../utils/logger";
-import { HostProvider } from "@/hosts/host-provider";
+import { HostProvider } from "../../../src/hosts/host-provider";
 
 export class SearchTool extends BaseTool {
     async execute(args: string[]): Promise<string> {

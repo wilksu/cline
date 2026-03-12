@@ -18,9 +18,8 @@ export const WsBridge = {
             vscode.commands.registerCommand("cline.wsBridge.stop", () => WsBridgeServer.stop())
         );
 
-        // 根据配置自动启动
-        const config = vscode.workspace.getConfiguration("cline.wsBridge");
-        if (config.get<boolean>("autoStart", false)) {
+        // 根据环境变量或默认值自动启动，减少对 vscode.workspace.getConfiguration 的依赖
+        if (process.env.CLINE_WS_AUTO_START === 'true' || false) {
             await WsBridgeServer.start();
         }
 

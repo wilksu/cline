@@ -1,16 +1,26 @@
-import * as vscode from "vscode";
-
-// biome-ignore lint: Output channel creation is required for logging
-const outputChannel = vscode.window.createOutputChannel("Cline Ws-Bridge");
+import { HostProvider } from "../../../src/hosts/host-provider";
 
 export const Logger = {
     info(message: string, ...args: any[]) {
-        outputChannel.appendLine(`[INFO] ${message} ${args.length ? JSON.stringify(args) : ""}`);
+        const formatted = `[WsBridge:INFO] ${message} ${args.length ? JSON.stringify(args) : ""}`;
+        if (HostProvider.isInitialized()) {
+            HostProvider.get().logToChannel(formatted);
+        } else {
+            console.log(formatted);
+        }
     },
     error(message: string, error?: any) {
-        outputChannel.appendLine(`[ERROR] ${message} ${error ? error.message || error : ""}`);
+        const formatted = `[WsBridge:ERROR] ${message} ${error ? error.message || error : ""}`;
+        if (HostProvider.isInitialized()) {
+            HostProvider.get().logToChannel(formatted);
+        } else {
+            console.error(formatted);
+        }
     },
     debug(message: string) {
-        outputChannel.appendLine(`[DEBUG] ${message}`);
+        const formatted = `[WsBridge:DEBUG] ${message}`;
+        if (HostProvider.isInitialized()) {
+            HostProvider.get().logToChannel(formatted);
+        }
     }
 };
