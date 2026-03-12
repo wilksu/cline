@@ -89,12 +89,15 @@ export class FileEditor {
 		}
 
 		// 2. SEARCH/REPLACE blocks (Fallback or Mixed)
-		const blockRegex = /<<<<<<< SEARCH\s*([\s\S]*?)\s*=======\s*([\s\S]*?)\s*>>>>>>> REPLACE/g
+		// Use a more strict regex to avoid swallowing indentation or mixing blocks.
+		// We ensure the line after SEARCH/REPLACE markers is preserved (the \r?\n).
+		const blockRegex = /<<<<<<< SEARCH\r?\n([\s\S]*?)[\r\n]+=======[\r\n]+([\s\S]*?)[\r\n]+>>>>>>> REPLACE/g
 		let match
 		let searchEditsApplied = 0
 
 		while ((match = blockRegex.exec(codeBlock)) !== null) {
 			searchEditsApplied++
+			// Note: match[1] and match[2] already have leading/trailing newlines handled by the strict \n in regex
 			const searchBlock = match[1]
 			const replaceBlock = match[2]
 
