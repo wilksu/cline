@@ -28,24 +28,33 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'npm'
-          cache-dependency-path: 'cline-main/package.json'
+
+      - name: Cache Node Modules
+        id: cache-npm
+        uses: actions/cache@v4
+        with:
+          path: |
+            cline-main/node_modules
+            cline-main/webview-ui/node_modules
+            ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('cline-main/package-lock.json', 'cline-main/webview-ui/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
 
       - name: Sync Patch Files
         run: |
           cp -r patch-source/custom-integration cline-main/
           cd cline-main
+          # 仅在 patch 逻辑需要时运行
           node custom-integration/scripts/apply-patch.mjs
 
       - name: Install Dependencies
+        if: steps.cache-npm.outputs.cache-hit != 'true'
         run: |
           cd cline-main
-          # 安装根目录依赖
-          npm install --include=optional
-          # 安装补丁必需的 ws
+          npm ci --include=optional
           npm install ws @types/ws --save-dev
-          # 关键：安装 Webview 依赖
-          cd webview-ui && npm install --include=optional
+          cd webview-ui && npm ci --include=optional
 
       - name: Build and Package
         env:
