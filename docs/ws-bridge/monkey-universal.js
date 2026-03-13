@@ -62,9 +62,15 @@
             getContent: (el) => el.innerText || el.textContent,
             fixInput: (el, text) => {
                 el.focus();
-                // 仅当完全为空的默认占位符时清空，避免误删已附带的图片等富文本元素
-                if (el.innerHTML === '<p><br></p>') el.innerHTML = '';
-                
+                // 修正：不再手动清空 innerHTML，而是全选内容让 insertText 覆盖，防止浏览器自动补段落
+                if (el.innerHTML === '<p><br></p>') {
+                    const range = document.createRange();
+                    range.selectNodeContents(el);
+                    const sel = window.getSelection();
+                    sel.removeAllRanges();
+                    sel.addRange(range);
+                }
+
                 const inserted = document.execCommand('insertText', false, text);
                 if (!inserted) el.innerText = (el.innerText || "") + text;
                 ['input', 'change', 'compositionend'].forEach(t => el.dispatchEvent(new Event(t, { bubbles: true })));
@@ -137,47 +143,47 @@
 
     // --- 样式注入 ---
     GM_addStyle(`
-        :root { 
-            --br-bg: #ffffff; 
-            --br-text: #1a1a1a; 
-            --br-border: #cccccc; 
-            --br-primary: #0078d4; 
-            --br-buoy-bg: #ffffff; 
+        :root {
+            --br-bg: #ffffff;
+            --br-text: #1a1a1a;
+            --br-border: #cccccc;
+            --br-primary: #0078d4;
+            --br-buoy-bg: #ffffff;
             --br-input-bg: #f5f5f5;
         }
-        @media (prefers-color-scheme: dark) { 
-            :root { 
-                --br-bg: #1e1e1e; 
-                --br-text: #eeeeee; 
-                --br-border: #444444; 
-                --br-primary: #0e639c; 
-                --br-buoy-bg: #252526; 
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --br-bg: #1e1e1e;
+                --br-text: #eeeeee;
+                --br-border: #444444;
+                --br-primary: #0e639c;
+                --br-buoy-bg: #252526;
                 --br-input-bg: #111111;
-            } 
+            }
         }
 
-        #tm-buoy { 
-            position: fixed; bottom: 20px; right: 20px; width: 50px; height: 50px; border-radius: 25px; 
-            background: var(--br-buoy-bg); border: 2px solid #666; display: flex; align-items: center; 
-            justify-content: center; cursor: pointer; z-index: 10000; font-size: 10px; font-weight: bold; 
-            color: var(--br-text); transition: 0.3s; flex-direction: column; 
+        #tm-buoy {
+            position: fixed; bottom: 20px; right: 20px; width: 50px; height: 50px; border-radius: 25px;
+            background: var(--br-buoy-bg); border: 2px solid #666; display: flex; align-items: center;
+            justify-content: center; cursor: pointer; z-index: 10000; font-size: 10px; font-weight: bold;
+            color: var(--br-text); transition: 0.3s; flex-direction: column;
         }
         #tm-buoy.status-offline { border-color: #e74c3c; color: #e74c3c; }
         #tm-buoy.status-idle { border-color: #4cd964; color: #4cd964; }
         #tm-buoy.status-ai_gen { border-color: #f39c12; color: #f39c12; box-shadow: 0 0 15px rgba(243, 156, 18, 0.4); }
-        
+
         #tm-panel { position: fixed; bottom: 80px; right: 20px; width: 250px; background: var(--br-bg); color: var(--br-text); border: 1px solid var(--br-border); border-radius: 8px; padding: 12px; z-index: 9999; box-shadow: 0 8px 24px rgba(0,0,0,0.5); font-family: 'Segoe UI', sans-serif; }
         #tm-panel.hidden { display: none; }
-        
+
         .tm-row { margin-bottom: 8px; }
         .tm-input { background: var(--br-input-bg); border: 1px solid var(--br-border); color: var(--br-text); padding: 4px 6px; border-radius: 4px; font-size: 11px; width: 100%; }
         .tm-textarea { height: 50px; resize: vertical; font-family: monospace; }
-        
+
         .tm-btn-group { display: flex; gap: 5px; }
         .tm-btn { flex: 1; background: var(--br-border); color: var(--br-text); border: 1px solid var(--br-border); padding: 5px; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: bold; }
         .tm-btn.primary { background: var(--br-primary); color: white; border: none; }
         .tm-btn.active { background: #5a3696; border-color: #7a56b6; color: white; }
-        
+
         .tm-toggles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; background: rgba(255,255,255,0.05); padding: 8px; border-radius: 6px; }
         .tm-label { display: flex; align-items: center; gap: 3px; font-size: 10px; color: #aaa; cursor: pointer; }
         .tm-label input:checked + span { color: #4cd964; font-weight: bold; }
@@ -196,12 +202,9 @@
             const el = document.querySelector(Active.input);
             if (!el) return;
 
-            // 1. 读取已有内容
-            const existingText = Active.getContent(el) || "";
-            const needsNewline = existingText.trim().length > 0;
-
-            // 2. 构造追加内容
-            const textToInsert = needsNewline ? ("\n" + content) : content;
+            // 1. 读取已有内容并判断是否需要换行衔接
+            const existingText = (Active.getContent(el) || "").trimEnd();
+            const textToInsert = (existingText ? "\n" : "") + content;
 
             // 3. 执行写入 (由具体适配器处理事件触发，避免外层重复触发导致冲突)
             Active.fixInput(el, textToInsert);
@@ -223,7 +226,7 @@
             const b = document.createElement('div');
             b.className = 'tm-bubble';
             if(isError) b.style.borderLeftColor = '#e74c3c';
-            
+
             // 增强回显：显示前 100 字符预览，并支持点击复制
             const preview = msg.length > 100 ? msg.substring(0, 100) + '...' : msg;
             b.innerHTML = `
@@ -298,18 +301,18 @@
                     const formattedResults = parsedData.results.map(r => {
                         const isSuccess = r.status === 'success';
                         if (!isSuccess) hasError = true;
-                        
+
                         // 1. UI 精确气泡提示 (右下角弹窗)
                         const shortCmd = r.command.length > 50 ? r.command.substring(0, 50) + '...' : r.command;
                         Utils.notify(`[${isSuccess ? 'OK' : 'FAIL'}] ${shortCmd}\n${r.output || ''}`, !isSuccess);
-                        
+
                         // 2. 拼接 LLM 友好的 Markdown (用于输入框)
                         const header = `[${isSuccess ? 'OK' : 'FAIL'}] ${r.command}`;
                         return r.output ? `${header}\n${r.output}` : header;
                     });
-                    
+
                     llmMarkdown = formattedResults.join("\n\n");
-                    
+
                     // 如果被熔断机制打断，给 LLM 一个明确的系统级提示以促使其纠错
                     if (hasError) {
                         llmMarkdown += "\n\n**SYSTEM NOTE:** Execution stopped due to the error above. Please correct the command and try again.";
@@ -317,12 +320,13 @@
                 }
 
                 if (State.autoPaste) {
-                    // 容错安全锁：如果有错误且未开启 Loop 模式，拦截自动粘贴，等待人类确认
-                    if (!hasError || State.loopMode) {
-                        Utils.smartPaste(llmMarkdown);
-                    } else {
-                        Utils.notify('⚠️ Auto-paste paused due to error (Loop mode off). You can paste manually.', true);
+                    // 如果发生错误，且当前处于 Loop 模式，则自动熔断退出 Loop 模式
+                    if (hasError && State.loopMode) {
+                        Utils.notify('⚠️ Error detected. Exiting Loop Mode for safety.', true);
+                        if (window._tmSetLoopMode) window._tmSetLoopMode(false);
                     }
+                    // 无论成功还是失败，只要开启了 autoPaste，都要把结果（包含错误提示）贴回输入框给 LLM 看
+                    Utils.smartPaste(llmMarkdown);
                 }
             } else {
                 // 未知结构的 JSON，原样处理
@@ -395,13 +399,21 @@
             if (State.isConnected) State.ws.send(document.getElementById('tm-cmd-box').value);
         };
 
+        // 抽取为独立函数，方便在错误时触发降级
+        window._tmSetLoopMode = function(enable) {
+            State.loopMode = enable;
+            const btn = document.getElementById('tm-loop');
+            if (btn) btn.classList.toggle('active', enable);
+            State.autoSend = enable;
+            State.autoCapture = enable;
+            const cSend = document.getElementById('c-send');
+            const cCopy = document.getElementById('c-copy');
+            if (cSend) cSend.checked = enable;
+            if (cCopy) cCopy.checked = enable;
+        };
+
         document.getElementById('tm-loop').onclick = function() {
-            State.loopMode = !State.loopMode;
-            this.classList.toggle('active', State.loopMode);
-            State.autoSend = State.loopMode;
-            State.autoCapture = State.loopMode;
-            document.getElementById('c-send').checked = State.loopMode;
-            document.getElementById('c-copy').checked = State.loopMode;
+            window._tmSetLoopMode(!State.loopMode);
         };
 
         ['c-paste','c-send','c-copy'].forEach(id => {
@@ -440,7 +452,14 @@
             console.log('[Bridge] Copy button clicked, starting capture...');
             Utils.notify('⏳ Capturing clipboard...');
 
-            const oldText = State.lastCapturedText;
+            // 修复：记录旧剪贴板内容，用于对比是否产生了新的复制。
+            // 不使用 lastCapturedText 避免连续粘贴相同代码块时被误判为未更新
+            let oldText = "";
+            try { oldText = await navigator.clipboard.readText(); } catch(e) {}
+
+            // 修复：等待原网页的 onClick 事件将内容写入剪贴板（避免瞬间读到旧数据）
+            await new Promise(r => setTimeout(r, 150));
+
             let attempts = 0;
             const maxAttempts = 15; // 延长到 1.5 秒
 
@@ -449,11 +468,11 @@
                 try {
                     const newText = await navigator.clipboard.readText();
                     // 满足以下任一条件即发送：
-                    // 1. 内容变了
-                    // 2. 轮询超过 1 秒且内容不为空（处理手动重发相同内容）
+                    // 1. 内容变了 (说明原网页已经成功写入新内容)
+                    // 2. 轮询超过 1 秒且内容不为空（处理原网页确实重新复制了一模一样内容的情况）
                     if (newText && (newText !== oldText || attempts > 10)) {
                         clearInterval(check);
-                        State.lastCapturedText = newText;
+                        State.lastCapturedText = newText; // 留作他用
                         State.ws.send(newText);
                         Utils.notify('📋 Content sent to VS Code');
                         console.log('[Bridge] Content sent successfully.');

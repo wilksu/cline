@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       cline_tag:
-        description: 'Cline Version Tag (e.g. v3.57.0)'
+        description: 'Cline Version Tag (e.g. v3.57.0 or "latest")'
         required: true
-        default: 'main'
+        default: 'latest'
 
 jobs:
   build:
@@ -17,11 +17,24 @@ jobs:
         with:
           path: bridge-source
 
+      - name: Resolve Target Cline Tag
+        id: resolve-tag
+        run: |
+          if [ "${{ inputs.cline_tag }}" == "latest" ]; then
+            # 使用 GitHub API 获取最新 Release 的 Tag
+            LATEST_TAG=$(curl -s https://api.github.com/repos/cline/cline/releases/latest | jq -r .tag_name)
+            echo "Resolved latest tag: $LATEST_TAG"
+            echo "TARGET_TAG=$LATEST_TAG" >> $GITHUB_ENV
+          else
+            echo "Using provided tag: ${{ inputs.cline_tag }}"
+            echo "TARGET_TAG=${{ inputs.cline_tag }}" >> $GITHUB_ENV
+          fi
+
       - name: Checkout Cline (Official)
         uses: actions/checkout@v4
         with:
           repository: 'cline/cline'
-          ref: ${{ github.event.inputs.cline_tag }}
+          ref: ${{ env.TARGET_TAG }}
           path: cline-source
 
       - name: 🧩 Apply Patch and Integrate Bridge
@@ -41,7 +54,7 @@ jobs:
           npm run install:all
           # 仅在文件名上增加标识，保持 package.json 原始性
           BUILD_DATE=$(date +'%Y%m%d')
-          npx vsce package --out ../cline-${{ github.event.inputs.cline_tag }}-wsbridge-${BUILD_DATE}.vsix
+          npx vsce package --out ../cline-${{ env.TARGET_TAG }}-wsbridge-${BUILD_DATE}.vsix
 
       - name: 📦 Upload Artifact
         uses: actions/upload-artifact@v4
