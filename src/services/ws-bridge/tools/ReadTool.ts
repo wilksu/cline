@@ -64,6 +64,7 @@ export class ReadTool extends BaseTool<ReadParams> {
 		try {
 			const filePathsToRead: string[] = []
 			const explicitFolders: string[] = []
+			const notFoundPaths: string[] = []
 
 			// Use native ClineIgnoreController
 			const ignoreController = await this.getIgnoreController()
@@ -103,7 +104,8 @@ export class ReadTool extends BaseTool<ReadParams> {
 						explicitFolders.push(absPath)
 					}
 				} catch {
-					// ignore missing files
+					// Collect missing files instead of silently ignoring
+					notFoundPaths.push(makeRelative(absPath, this.workspaceRoot))
 				}
 			}
 
@@ -142,12 +144,20 @@ export class ReadTool extends BaseTool<ReadParams> {
 
 			const uniquePaths = Array.from(new Set(filePathsToRead))
 
-			if (uniquePaths.length === 0) {
-				return { llmContent: "No files found.", returnDisplay: "No files found.", data: [] }
-			}
-
 			let outputText = ""
 			const data = []
+			
+			if (notFoundPaths.length > 0) {
+				outputText += `[Error] The following requested file(s) were not found:\n`
+				notFoundPaths.forEach(p => outputText += `- ${p}\n`)
+				outputText += `\n`
+			}
+
+			if (uniquePaths.length === 0) {
+				const finalMsg = outputText ? outputText + "No other files found." : "No files found."
+				return { llmContent: finalMsg.trim(), returnDisplay: "No files found.", data: [] }
+			}
+
 			let successCount = 0
 			const MAX_FILES = 50
 			const filesToProcess = uniquePaths.slice(0, MAX_FILES)

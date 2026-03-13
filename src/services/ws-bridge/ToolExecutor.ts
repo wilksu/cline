@@ -95,6 +95,9 @@ export async function executeCommands(inputText: string): Promise<string> {
 						status: "error",
 						output: finalOutput,
 					})
+					
+					// 🚨 熔断机制 (Fail-Fast): 一旦发生错误，立即停止执行后续命令
+					break
 				}
 			}
 			// Handle Tool commands (ls, read, search)
@@ -131,35 +134,23 @@ export async function executeCommands(inputText: string): Promise<string> {
 					const msg = e instanceof Error ? e.message : String(e)
 					Logger.error(`[ToolExecutor] Command failed: ${cmd.name}`, e)
 					results.push({ command: cmd.name, status: "error", output: msg })
+					
+					// 🚨 熔断机制 (Fail-Fast)
+					break
 				}
 			}
 		}
 
-		// Format output
-		if (commands.length === 1 && commands[0].outputJson) {
-			const r = results[0]
-			if (r.status === "success" && r.data) {
-				return JSON.stringify(r.data)
-			}
-			// Fallback to error message in JSON
-			return JSON.stringify({ status: r.status, output: r.output })
-		}
-
-		const finalOutput = results
-			.map((r) => {
-				if (r.status === "success") {
-					// Minimal output format
-					const header = `[OK] ${r.command}`
-					return r.output ? `${header}\n${r.output}` : header
-				} else {
-					return `[FAIL] ${r.command}\n${r.output}`
-				}
-			})
-			.join("\n\n")
-
-		return finalOutput
+		// 采用结构化 JSON 协议返回
+		return JSON.stringify({
+			type: "batch_result",
+			results: results
+		})
 	} catch (error) {
 		Logger.error(`[ToolExecutor] Fatal Error`, error)
-		return `Error: ${error instanceof Error ? error.message : String(error)}`
+		return JSON.stringify({
+			type: "fatal_error",
+			error: error instanceof Error ? error.message : String(error)
+		})
 	}
 }

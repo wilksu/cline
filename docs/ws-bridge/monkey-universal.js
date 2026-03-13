@@ -62,6 +62,9 @@
             getContent: (el) => el.innerText || el.textContent,
             fixInput: (el, text) => {
                 el.focus();
+                // 仅当完全为空的默认占位符时清空，避免误删已附带的图片等富文本元素
+                if (el.innerHTML === '<p><br></p>') el.innerHTML = '';
+                
                 const inserted = document.execCommand('insertText', false, text);
                 if (!inserted) el.innerText = (el.innerText || "") + text;
                 ['input', 'change', 'compositionend'].forEach(t => el.dispatchEvent(new Event(t, { bubbles: true })));
@@ -200,9 +203,8 @@
             // 2. 构造追加内容
             const textToInsert = needsNewline ? ("\n" + content) : content;
 
-            // 3. 执行写入
+            // 3. 执行写入 (由具体适配器处理事件触发，避免外层重复触发导致冲突)
             Active.fixInput(el, textToInsert);
-            el.dispatchEvent(new Event('input', { bubbles: true }));
 
             // 4. 自动发送逻辑 (带随机延迟)
             if (State.autoSend) {
@@ -272,12 +274,59 @@
             console.log('[Bridge] WebSocket Received:', msg);
             if (!msg || typeof msg !== 'string') return;
 
-            // 无论如何先弹出回显通知
-            const isError = msg.includes('Task failed:') || msg.startsWith('Error:');
-            Utils.notify(msg, isError);
+            let parsedData;
+            try {
+                parsedData = JSON.parse(msg);
+            } catch (err) {
+                // 兼容旧版纯文本错误信息或非 JSON 返回值
+                const isErr = msg.includes('Error:') || msg.includes('Task failed:');
+                Utils.notify(msg, isErr);
+                if (State.autoPaste && !isErr) Utils.smartPaste(msg);
+                return;
+            }
 
-            if (State.autoPaste && !isError) {
-                Utils.smartPaste(msg);
+            if (parsedData.type === 'batch_result' || parsedData.type === 'fatal_error') {
+                let hasError = false;
+                let llmMarkdown = "";
+
+                if (parsedData.type === 'fatal_error') {
+                    hasError = true;
+                    Utils.notify(parsedData.error, true);
+                    llmMarkdown = `[FATAL ERROR]\n${parsedData.error}`;
+                } else if (parsedData.results && Array.isArray(parsedData.results)) {
+                    // 处理结构化结果数组
+                    const formattedResults = parsedData.results.map(r => {
+                        const isSuccess = r.status === 'success';
+                        if (!isSuccess) hasError = true;
+                        
+                        // 1. UI 精确气泡提示 (右下角弹窗)
+                        const shortCmd = r.command.length > 50 ? r.command.substring(0, 50) + '...' : r.command;
+                        Utils.notify(`[${isSuccess ? 'OK' : 'FAIL'}] ${shortCmd}\n${r.output || ''}`, !isSuccess);
+                        
+                        // 2. 拼接 LLM 友好的 Markdown (用于输入框)
+                        const header = `[${isSuccess ? 'OK' : 'FAIL'}] ${r.command}`;
+                        return r.output ? `${header}\n${r.output}` : header;
+                    });
+                    
+                    llmMarkdown = formattedResults.join("\n\n");
+                    
+                    // 如果被熔断机制打断，给 LLM 一个明确的系统级提示以促使其纠错
+                    if (hasError) {
+                        llmMarkdown += "\n\n**SYSTEM NOTE:** Execution stopped due to the error above. Please correct the command and try again.";
+                    }
+                }
+
+                if (State.autoPaste) {
+                    // 容错安全锁：如果有错误且未开启 Loop 模式，拦截自动粘贴，等待人类确认
+                    if (!hasError || State.loopMode) {
+                        Utils.smartPaste(llmMarkdown);
+                    } else {
+                        Utils.notify('⚠️ Auto-paste paused due to error (Loop mode off). You can paste manually.', true);
+                    }
+                }
+            } else {
+                // 未知结构的 JSON，原样处理
+                Utils.notify('Received generic JSON payload', false);
             }
         };
 
@@ -413,8 +462,11 @@
                         console.warn('[Bridge] Capture timeout or no new content.');
                     }
                 } catch (err) {
-                    clearInterval(check);
-                    Utils.notify('❌ Clipboard access denied. Please click on the page first.', true);
+                    // 后台/无焦点时静默捕获异常，继续轮询直到达到 maxAttempts
+                    if (attempts >= maxAttempts) {
+                        clearInterval(check);
+                        Utils.notify('❌ Clipboard access denied. Pls check focus.', true);
+                    }
                 }
             }, 100);
         }

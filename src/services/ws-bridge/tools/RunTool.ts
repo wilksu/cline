@@ -78,44 +78,74 @@ export class RunTool extends BaseTool<RunParams> {
 			terminalInfo.terminal.show()
 
 			// Wrap command to prevent interactive pagers (less, more) and clear styling
-			// Priority: Env CLINE_PAGER > 'cat'
 			const pager = process.env.CLINE_PAGER || "cat"
 			const term = process.env.CLINE_TERM || "dumb"
 
-			const wrappedCommand =
-				process.platform === "win32"
-					? `$env:PAGER='${pager}'; $env:TERM='${term}'; ${params.command}`
-					: `PAGER=${pager} TERM=${term} ${params.command}`
+			// Use simpler cross-platform execution or rely on terminal's default shell
+			// For Windows, prepending variables directly can crash if the shell is cmd.exe instead of PS.
+			// Let's pass the raw command, and try to handle pager issues if they arise later, 
+			// or use a cross-env like approach. For now, sending the raw command is safest.
+			let envPrefix = ""
+			if (process.platform !== "win32") {
+				envPrefix = `PAGER=${pager} TERM=${term} `
+			}
+			const wrappedCommand = `${envPrefix}${params.command}`
 
-			const process = terminalManager.runCommand(terminalInfo, wrappedCommand)
+			const commandProcess = terminalManager.runCommand(terminalInfo, wrappedCommand)
+
+			// --- Dynamic Configuration ---
+			const _stateManager = StateManager.get()
+			const envLimit = process.env.CLINE_RUN_OUTPUT_LIMIT ? parseInt(process.env.CLINE_RUN_OUTPUT_LIMIT) : NaN
+			const userLimit = _stateManager.getGlobalSettingsKey("terminalOutputLineLimit")
+			const LIMIT = !isNaN(envLimit) ? envLimit : (userLimit ? userLimit * 100 : 30000)
 
 			const outputLines: string[] = []
+			let currentOutputLength = 0
 
-			process.on("line", (line) => {
+			commandProcess.on("line", (line: string) => {
+				// Prevent memory leak on massive logs by keeping only the recent lines that fit the limit
+				if (currentOutputLength > LIMIT * 1.5) {
+					outputLines.shift() // Remove oldest line
+				} else {
+					currentOutputLength += line.length + 1
+				}
 				outputLines.push(line)
 			})
 
-			// Wait for completion
-			await process
+			// 🚨 Intelligent Timeout Mechanism
+			// If a command (like `npm run dev`) blocks, we shouldn't hang the LLM bridge.
+			const TIMEOUT_MS = 15000 // 15 seconds
+			
+			let isTimeout = false
+			try {
+				await Promise.race([
+					commandProcess,
+					new Promise((_, reject) => setTimeout(() => reject(new Error("TIMEOUT")), TIMEOUT_MS))
+				])
+			} catch (err: any) {
+				if (err.message === "TIMEOUT") {
+					isTimeout = true
+				} else {
+					throw err
+				}
+			}
 
 			const output = outputLines.join("\n")
-
-			// --- Dynamic Configuration ---
-			const stateManager = StateManager.get()
-			
-			// 1. Resolve Output Limit: Env > User Setting > Default (30k)
-			const envLimit = process.env.CLINE_RUN_OUTPUT_LIMIT ? parseInt(process.env.CLINE_RUN_OUTPUT_LIMIT) : NaN
-			const userLimit = stateManager.getGlobalSettingsKey("terminalOutputLineLimit") // Existing UI setting
-			// Note: userLimit is usually in lines, we convert to chars approximately (1 line ≈ 100 chars) or use as-is if it's a new setting
-			const LIMIT = !isNaN(envLimit) ? envLimit : (userLimit ? userLimit * 100 : 30000)
-
 			const truncatedOutput =
-				output.length > LIMIT ? `...[truncated ${output.length - LIMIT} chars]...\n` + output.substring(output.length - LIMIT) : output
+				output.length > LIMIT 
+				? `...[truncated ${output.length - LIMIT} chars]...\n` + output.substring(output.length - LIMIT) 
+				: output
+
+			let finalLlmContent = truncatedOutput || "Command executed successfully (no output)."
+			
+			if (isTimeout) {
+				finalLlmContent += "\n\n[SYSTEM NOTE: Command is still running in the background. Returning recent output.]"
+			}
 
 			return {
-				llmContent: truncatedOutput || "Command executed successfully (no output).",
-				returnDisplay: `Executed: ${params.command}`,
-				data: { exitCode: 0, output },
+				llmContent: finalLlmContent,
+				returnDisplay: `Executed: ${params.command}${isTimeout ? ' (Background)' : ''}`,
+				data: { exitCode: isTimeout ? null : 0, output },
 			}
 		} catch (error) {
 			const msg = getErrorMessage(error)
