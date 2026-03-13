@@ -1,10 +1,23 @@
 import * as fs from "fs/promises"
 import * as path from "path"
 import { TextDecoder } from "util"
+import { StateManager } from "@/core/storage/StateManager"
 import { BaseTool } from "../BaseTool"
 import { Logger } from "../Logger"
 import type { ToolResult } from "../types"
 import { getErrorMessage, isPathWithinWorkspace, makeRelative, mapAsync } from "../utils"
+
+/**
+ * Checks if a buffer contains binary data (contains null bytes)
+ */
+function isBinary(buffer: Buffer): boolean {
+	// Check first 8KB for null bytes
+	const checkLength = Math.min(buffer.length, 8192)
+	for (let i = 0; i < checkLength; i++) {
+		if (buffer[i] === 0) return true
+	}
+	return false
+}
 
 export interface ReadParams {
 	paths: string[]
@@ -57,7 +70,13 @@ export class ReadTool extends BaseTool<ReadParams> {
 
 			const maxFileSizeMB = 2
 			const maxFileSizeBytes = maxFileSizeMB * 1024 * 1024
-			const MAX_TOTAL_SIZE = 350 * 1024
+			
+			// --- Dynamic Configuration ---
+			const stateManager = StateManager.get()
+			const envLimit = process.env.CLINE_RUN_OUTPUT_LIMIT ? parseInt(process.env.CLINE_RUN_OUTPUT_LIMIT) : NaN
+			const userLimit = stateManager.getGlobalSettingsKey("terminalOutputLineLimit")
+			// Default to 350KB (approx 3500 lines) if no config, consistent with CLI limits
+			const MAX_TOTAL_SIZE = !isNaN(envLimit) ? envLimit : (userLimit ? userLimit * 200 : 350 * 1024)
 
 			for (const p of params.paths) {
 				const absPath = path.isAbsolute(p) ? p : path.join(this.workspaceRoot, p)
@@ -146,7 +165,18 @@ export class ReadTool extends BaseTool<ReadParams> {
 					}
 
 					const contentRaw = await fs.readFile(filePath)
-					const content = new TextDecoder("utf-8").decode(contentRaw)
+					
+					// Binary Protection: Check for binary data before decoding
+					if (isBinary(contentRaw)) {
+						return {
+							filePath,
+							skipped: true,
+							reason: "Binary file detected (reading binary files is not supported)",
+							content: "",
+						}
+					}
+
+					const content = new TextDecoder("utf-8", { fatal: false }).decode(contentRaw)
 					return { filePath, skipped: false, content }
 				} catch (e) {
 					Logger.warn(`Failed to read ${filePath}`)

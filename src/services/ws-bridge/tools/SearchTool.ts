@@ -5,6 +5,7 @@
 
 import * as path from "path"
 import { regexSearchFiles } from "@/services/ripgrep"
+import { StateManager } from "@/core/storage/StateManager"
 import { BaseTool } from "../BaseTool"
 import { Logger } from "../Logger"
 import type { ToolResult } from "../types"
@@ -98,10 +99,22 @@ export class SearchTool extends BaseTool<SearchParams> {
 				(output.match(/Found \d+ results/) && !output.includes("Found 0 results"))
 			const summary = hasResults ? `Search completed for "${searchPattern}"` : `No matches found for "${searchPattern}"`
 
+			// --- Dynamic Truncation Logic ---
+			const stateManager = StateManager.get()
+			const envLimit = process.env.CLINE_RUN_OUTPUT_LIMIT ? parseInt(process.env.CLINE_RUN_OUTPUT_LIMIT) : NaN
+			const userLimit = stateManager.getGlobalSettingsKey("terminalOutputLineLimit")
+			const LIMIT = !isNaN(envLimit) ? envLimit : (userLimit ? userLimit * 100 : 30000)
+
+			let finalOutput = output
+			if (output.length > LIMIT) {
+				// For search results, we usually want the FIRST matches to understand context
+				finalOutput = output.substring(0, LIMIT) + `\n\n...[truncated ${output.length - LIMIT} characters]...`
+			}
+
 			return {
-				llmContent: output,
+				llmContent: finalOutput,
 				returnDisplay: summary,
-				data: output, // Raw output for now
+				data: output, // Return raw output in data field
 			}
 		} catch (error) {
 			const msg = getErrorMessage(error)

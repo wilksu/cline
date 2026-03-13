@@ -62,26 +62,35 @@ function stripThinkingBlocks(input: string): string {
 }
 
 /**
- * Extract path and alphanumeric hash from the end of a string
- * Format: path/to/file.ts[A1B2C3]
- * Search from the back to safely handle paths with special characters.
+ * Extract path and alphanumeric hash from the end of a string.
+ * Supports format: path/to/file.ts[A1B2C3]
+ * Optimized to handle paths containing brackets (e.g., Next.js [id].tsx).
  */
 export function extractPathAndHash(input: string): { path: string; hash?: string } {
-	const lastBracketClose = input.lastIndexOf("]")
-	if (lastBracketClose === input.length - 1) {
-		const lastBracketOpen = input.lastIndexOf("[")
-		if (lastBracketOpen !== -1 && lastBracketOpen < lastBracketClose) {
-			const hashContent = input.substring(lastBracketOpen + 1, lastBracketClose)
-			// Ensure hash strictly contains only letters and numbers
-			if (/^[a-zA-Z0-9]+$/.test(hashContent)) {
-				return {
-					path: input.substring(0, lastBracketOpen).trim(),
-					hash: hashContent,
-				}
-			}
+	const trimmed = input.trim()
+
+	// 1. Check for hash at the very end (handles: path/to/file[HASH] or "path/to/file"[HASH])
+	// The greedy ([\s\S]+) ensures we capture the longest possible path,
+	// treating only the LAST bracketed alphanumeric block as the hash.
+	const endMatch = trimmed.match(/^([\s\S]+)\[([a-zA-Z0-9]+)\]$/)
+	if (endMatch) {
+		return {
+			path: trimQuotes(endMatch[1].trim()),
+			hash: endMatch[2],
 		}
 	}
-	return { path: input.trim() }
+
+	// 2. Check if the hash was inside quotes (handles: "path/to/file[HASH]")
+	const unquoted = trimQuotes(trimmed)
+	const innerMatch = unquoted.match(/^([\s\S]+)\[([a-zA-Z0-9]+)\]$/)
+	if (innerMatch) {
+		return {
+			path: innerMatch[1].trim(),
+			hash: innerMatch[2],
+		}
+	}
+
+	return { path: unquoted }
 }
 
 /**

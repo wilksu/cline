@@ -77,7 +77,17 @@ export class RunTool extends BaseTool<RunParams> {
 			// Show the terminal to the user
 			terminalInfo.terminal.show()
 
-			const process = terminalManager.runCommand(terminalInfo, params.command)
+			// Wrap command to prevent interactive pagers (less, more) and clear styling
+			// Priority: Env CLINE_PAGER > 'cat'
+			const pager = process.env.CLINE_PAGER || "cat"
+			const term = process.env.CLINE_TERM || "dumb"
+
+			const wrappedCommand =
+				process.platform === "win32"
+					? `$env:PAGER='${pager}'; $env:TERM='${term}'; ${params.command}`
+					: `PAGER=${pager} TERM=${term} ${params.command}`
+
+			const process = terminalManager.runCommand(terminalInfo, wrappedCommand)
 
 			const outputLines: string[] = []
 
@@ -89,8 +99,18 @@ export class RunTool extends BaseTool<RunParams> {
 			await process
 
 			const output = outputLines.join("\n")
-			// Truncate if too long (similar to Cline's internal limits)
-			const truncatedOutput = output.length > 5000 ? output.substring(0, 5000) + "\n...[truncated]..." : output
+
+			// --- Dynamic Configuration ---
+			const stateManager = StateManager.get()
+			
+			// 1. Resolve Output Limit: Env > User Setting > Default (30k)
+			const envLimit = process.env.CLINE_RUN_OUTPUT_LIMIT ? parseInt(process.env.CLINE_RUN_OUTPUT_LIMIT) : NaN
+			const userLimit = stateManager.getGlobalSettingsKey("terminalOutputLineLimit") // Existing UI setting
+			// Note: userLimit is usually in lines, we convert to chars approximately (1 line ≈ 100 chars) or use as-is if it's a new setting
+			const LIMIT = !isNaN(envLimit) ? envLimit : (userLimit ? userLimit * 100 : 30000)
+
+			const truncatedOutput =
+				output.length > LIMIT ? `...[truncated ${output.length - LIMIT} chars]...\n` + output.substring(output.length - LIMIT) : output
 
 			return {
 				llmContent: truncatedOutput || "Command executed successfully (no output).",

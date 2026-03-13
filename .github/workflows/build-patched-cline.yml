@@ -39,11 +39,13 @@ jobs:
         run: |
           npm install
           npm run install:all
-          # 编译并打包
-          npx vsce package --out ../patched-cline.vsix
+          # 仅在文件名上增加标识，保持 package.json 原始性
+          BUILD_DATE=$(date +'%Y%m%d')
+          npx vsce package --out ../cline-${{ github.event.inputs.cline_tag }}-wsbridge-${BUILD_DATE}.vsix
 
       - name: 📦 Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: cline-${{ github.event.inputs.cline_tag }}-wsbridge
-          path: patched-cline.vsix
+          name: patched-vsix-bundle
+          path: "*.vsix"
+          compression-level: 0 # VSIX 已经是压缩格式，禁用二次压缩以提高上传效率
