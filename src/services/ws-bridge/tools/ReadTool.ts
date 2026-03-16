@@ -188,7 +188,8 @@ export class ReadTool extends BaseTool<ReadParams> {
 					}
 
 					const content = new TextDecoder("utf-8", { fatal: false }).decode(contentRaw)
-					return { filePath, skipped: false, content }
+					const hash = crypto.createHash("sha1").update(contentRaw).digest("hex").substring(0, 10).toUpperCase()
+					return { filePath, skipped: false, content, hash }
 				} catch (e) {
 					Logger.warn(`Failed to read ${filePath}`)
 					return { filePath, error: e }
@@ -241,7 +242,7 @@ export class ReadTool extends BaseTool<ReadParams> {
 				// Keep raw content for data
 				const rawContent = linesSlice.join("\n")
 
-				const fileHash = crypto.createHash("sha1").update(contentRaw).digest("hex").substring(0, 10).toUpperCase()
+				const fileHash = res.hash || "NONE"
 
 				const header = `\n--- ${relPath}[${fileHash}] ---\n`
 				const footer = isTruncated ? `\n...(truncated via limit)...\n` : `\n`
