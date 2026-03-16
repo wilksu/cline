@@ -5,6 +5,7 @@
 
 import * as fs from "fs/promises"
 import * as path from "path"
+import * as crypto from "crypto"
 
 export class FileEditor {
 	constructor(private readonly workspaceRoot: string) {}
@@ -14,9 +15,8 @@ export class FileEditor {
 	 */
 	private async getFileHash(targetPath: string): Promise<string> {
 		try {
-			const stat = await fs.stat(targetPath)
-			// Creates a pure alphanumeric hash like: 18FA3B2A9C
-			return (Math.floor(stat.mtimeMs).toString(36) + stat.size.toString(36)).toUpperCase()
+			const content = await fs.readFile(targetPath)
+			return crypto.createHash("sha1").update(content).digest("hex").substring(0, 10).toUpperCase()
 		} catch {
 			return "NONE"
 		}

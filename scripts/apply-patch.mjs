@@ -63,9 +63,24 @@ const patchFiles = () => {
         const config = pkg.contributes.configuration.properties;
         if (!config["cline.wsBridge.enabled"]) {
             Object.assign(config, {
-                "cline.wsBridge.enabled": { "type": "boolean", "default": false, "description": "Enable WebSocket bridge" },
-                "cline.wsBridge.port": { "type": "number", "default": 3456, "description": "WebSocket server port" },
-                "cline.wsBridge.autoStart": { "type": "boolean", "default": false, "description": "Auto-start WebSocket server" }
+                "cline.wsBridge.enabled": { 
+                    "type": "boolean", 
+                    "default": false, 
+                    "scope": "resource",
+                    "description": "Enable WebSocket bridge" 
+                },
+                "cline.wsBridge.port": { 
+                    "type": "number", 
+                    "default": 3456, 
+                    "scope": "resource",
+                    "description": "WebSocket server port" 
+                },
+                "cline.wsBridge.autoStart": { 
+                    "type": "boolean", 
+                    "default": false, 
+                    "scope": "resource",
+                    "description": "Auto-start WebSocket server" 
+                }
             });
         }
 

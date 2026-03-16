@@ -777,24 +777,45 @@
         Minimap.update();
     }
 
-    // --- 核心优化：拦截剪贴板 API (解决监听不稳定的根本方法) ---
+    // --- 核心优化：混合捕获机制 (拦截 + 轮询保底) ---
     const originalWriteText = navigator.clipboard.writeText;
     navigator.clipboard.writeText = async function(text) {
         if (State.isConnected) {
             console.log('[Bridge] Clipboard API Intercepted:', text.substring(0, 30) + "...");
             State.ws.send(text);
-            Utils.notify('📋 Content intercepted & sent');
+            Utils.notify('🚀 Content sent (API)');
         }
         return originalWriteText.apply(this, arguments);
     };
 
-    // 保留点击事件作为降级方案，但移除轮询，改为被动响应
-    document.addEventListener('click', (e) => {
+    document.addEventListener('click', async (e) => {
         const btn = e.target.closest(Active.copyBtn);
         if (btn && State.isConnected) {
-            Utils.notify('⏳ API Interception active...');
-            // 大部分现代 AI 站点击复制按钮后都会触发 navigator.clipboard.writeText
-            // 如果某些站点使用 document.execCommand('copy')，可以在此扩展拦截
+            Utils.notify('⏳ Capturing...');
+
+            let oldText = "";
+            try { oldText = await navigator.clipboard.readText(); } catch(e) {}
+            
+            // 轮询检查剪贴板是否更新
+            let attempts = 0;
+            const check = setInterval(async () => {
+                attempts++;
+                try {
+                    const newText = await navigator.clipboard.readText();
+                    // 如果内容变了，或者虽然没变但已经确认点击了复制按钮且重试多次
+                    if (newText && (newText !== oldText || attempts > 8)) {
+                        clearInterval(check);
+                        // 强制更新并发送，不再判断内容是否一致，以响应用户的手动点击
+                        State.lastCapturedText = newText;
+                        State.ws.send(newText);
+                        Utils.notify('📋 Content sent (Polling)');
+                    } else if (attempts >= 15) {
+                        clearInterval(check);
+                    }
+                } catch (err) {
+                    if (attempts >= 15) clearInterval(check);
+                }
+            }, 100);
         }
     }, true);
 

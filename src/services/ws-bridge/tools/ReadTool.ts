@@ -1,5 +1,6 @@
 import * as fs from "fs/promises"
 import * as path from "path"
+import * as crypto from "crypto"
 import { TextDecoder } from "util"
 import { StateManager } from "@/core/storage/StateManager"
 import { BaseTool } from "../BaseTool"
@@ -240,8 +241,7 @@ export class ReadTool extends BaseTool<ReadParams> {
 				// Keep raw content for data
 				const rawContent = linesSlice.join("\n")
 
-				const stat = await fs.stat(filePath)
-				const fileHash = (Math.floor(stat.mtimeMs).toString(36) + stat.size.toString(36)).toUpperCase()
+				const fileHash = crypto.createHash("sha1").update(contentRaw).digest("hex").substring(0, 10).toUpperCase()
 
 				const header = `\n--- ${relPath}[${fileHash}] ---\n`
 				const footer = isTruncated ? `\n...(truncated via limit)...\n` : `\n`
