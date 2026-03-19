@@ -195,15 +195,15 @@ export function parseBatchInput(input: string): ParsedCommand[] {
 				const isShellCmd = cmdName === "run" || cmdName === "exec" || cmdName === "cmd"
 
 				const args = rawArgs.map((arg) => {
-					let cleanArg = arg.replace(/\\_/g, "_")
+					const cleanArg = arg.replace(/\\_/g, "_")
 
-					// If it's NOT a shell command, we need to strip quotes for FS operations
-					if (!isShellCmd) {
-						cleanArg = trimQuotes(cleanArg)
+					// If it's a shell command, we preserve quotes and don't look for hashes
+					if (isShellCmd) {
+						return cleanArg
 					}
 
-					// Strip hash so underlying tools (like ReadTool) get the pure file path
-					return extractPathAndHash(cleanArg).path
+					// For FS operations, strip quotes and extract path from potential [HASH] suffix
+					return extractPathAndHash(trimQuotes(cleanArg)).path
 				})
 
 				const jsonIndex = args.indexOf("--json")
