@@ -32,12 +32,20 @@
             port: '3456',
             defaultCmd: "ls: -R\nread: CLAUDE.md",
             delayMin: 1500,
-            delayMax: 4500
+            delayMax: 4500,
+            sessionId: 'sid_' + Math.random().toString(36).substr(2, 9)
         };
         // 优先级：当前 Session > 当前域名 > 全局备份 > 默认
-        return GM_getValue(SESSION_KEY, 
-               GM_getValue(DOMAIN_KEY, 
-               GM_getValue(GLOBAL_KEY, defaultConfig)));
+        let config = GM_getValue(SESSION_KEY, 
+                     GM_getValue(DOMAIN_KEY, 
+                     GM_getValue(GLOBAL_KEY, defaultConfig)));
+        
+        // 确保 sessionId 持久化，不随刷新改变
+        if (!config.sessionId) {
+            config.sessionId = 'sid_' + Math.random().toString(36).substr(2, 9);
+            GM_setValue(SESSION_KEY, config);
+        }
+        return config;
     };
     let savedConfig = getConfig();
 
@@ -68,8 +76,8 @@
         'gemini.google.com': {
             name: 'Gemini',
             input: 'div.ql-editor[contenteditable="true"]',
-            sendBtn: 'button[aria-label="Send message"]',
-            stopBtn: 'button[aria-label="Stop response"]',
+            sendBtn: 'button[aria-label*="Send"], button[aria-label*="发送"]',
+            stopBtn: 'button[aria-label*="Stop"], button[aria-label*="停止"], button:has(mat-icon[fonticon="stop"])',
             copyBtn: 'button[data-test-id="copy-button"]',
             getContent: (el) => el.innerText || el.textContent,
             fixInput: (el, text) => {
@@ -212,9 +220,14 @@
             transition: 0.2s;
         }
         .tm-bubble:hover { transform: scale(1.02); }
+        .tm-bubble.proactive { border-left-color: #f39c12; border-right: 1px solid #f39c12; box-shadow: 0 0 10px rgba(243, 156, 18, 0.2); }
         .tm-bubble-watermark {
             position: absolute; right: -5px; bottom: -5px; font-size: 22px; font-weight: 900;
             color: var(--br-text); opacity: 0.04; pointer-events: none; user-select: none;
+        }
+        .tm-bubble-action {
+            margin-top: 5px; padding-top: 5px; border-top: 1px solid var(--br-border);
+            display: flex; justify-content: flex-end;
         }
 
         /* Minimap 独立悬浮样式 */
@@ -385,34 +398,49 @@
 
     // --- WebSocket 逻辑 ---
     function toggleConnection() {
-        if (State.isConnected) {
-            State.ws.close();
+        if (State.isConnected || State.isConnecting) {
+            if (State.ws) {
+                State.ws.onclose = null; // 临时取消自动重连监听
+                State.ws.close();
+            }
+            State.isConnected = false;
+            State.isConnecting = false;
+            updateStatus('Disconnected', 'offline');
+            Utils.notify('🔌 Connection reset');
         } else {
-            connect();
+            connect(true);
         }
     }
 
-    function connect() {
-        if (State.isConnecting || (State.ws && State.ws.readyState === WebSocket.OPEN)) return;
+    function connect(force = false) {
+        if (!force && (State.isConnecting || (State.ws && State.ws.readyState === WebSocket.OPEN))) return;
+        
+        // 如果是强制连接，先清理旧的
+        if (force && State.ws) {
+            try { State.ws.close(); } catch(e) {}
+        }
+
         State.isConnecting = true;
+        updateStatus('Connecting...', 'offline');
 
         const hostEl = document.getElementById('tm-host');
         const portEl = document.getElementById('tm-port');
         const cmdEl = document.getElementById('tm-cmd-box');
         
-        const host = (hostEl && hostEl.value) ? hostEl.value : savedConfig.host;
-        const port = (portEl && portEl.value) ? portEl.value : savedConfig.port;
+        const host = (hostEl && hostEl.value) ? hostEl.value.trim() : savedConfig.host;
+        const port = (portEl && portEl.value) ? portEl.value.trim() : savedConfig.port;
         const defaultCmd = (cmdEl && cmdEl.value) ? cmdEl.value : savedConfig.defaultCmd;
         
         // 更新内存中的配置
         savedConfig = { ...savedConfig, host, port, defaultCmd };
         
-        // 三级持久化存储：
-        GM_setValue(SESSION_KEY, savedConfig); // 1. 记住当前对话的特殊配置
-        GM_setValue(DOMAIN_KEY, savedConfig);  // 2. 更新该平台的默认值
-        GM_setValue(GLOBAL_KEY, savedConfig);  // 3. 更新全局默认值
+        // 三级持久化存储
+        GM_setValue(SESSION_KEY, savedConfig);
+        GM_setValue(DOMAIN_KEY, savedConfig);
+        GM_setValue(GLOBAL_KEY, savedConfig);
 
         try {
+            console.log(`[Bridge] Attempting connection to ws://${host}:${port}`);
             State.ws = new WebSocket(`ws://${host}:${port}`);
             
             State.ws.onopen = () => {
@@ -420,6 +448,14 @@
                 State.isConnecting = false;
                 State.consecutiveErrors = 0;
                 updateStatus('Connected', 'idle');
+                
+                // 身份登记：告知后端当前会话 ID
+                State.ws.send(JSON.stringify({
+                    type: 'hello',
+                    sessionId: savedConfig.sessionId
+                }));
+                console.log('[Bridge] Session identified:', savedConfig.sessionId);
+                Utils.notify('✅ Connected: ' + host);
             };
 
             State.ws.onmessage = (e) => {
@@ -434,6 +470,39 @@
                     const isErr = msg.includes('Error:') || msg.includes('Task failed:');
                     Utils.notify(msg, isErr);
                     if (State.autoPaste && !isErr) Utils.smartPaste(msg);
+                    return;
+                }
+
+                // 处理主动推送通知 (Proactive Notification)
+                if (parsedData.type === 'proactive_notification') {
+                    const { source, content, level } = parsedData;
+                    const isError = level === 'error' || level === 'warning';
+                    
+                    const container = document.getElementById('tm-bubbles');
+                    if(!container) return;
+                    
+                    const b = document.createElement('div');
+                    b.className = 'tm-bubble proactive';
+                    if(isError) b.style.borderLeftColor = '#e74c3c';
+
+                    b.innerHTML = `
+                        <div style="font-weight:bold; font-size:9px; color:#f39c12; margin-bottom:3px">🔔 PUSH: ${source}</div>
+                        <div style="font-size:11px; max-height:60px; overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical;">
+                            ${content.replace(/</g, '&lt;')}
+                        </div>
+                        <div class="tm-bubble-action">
+                            <button class="tm-btn primary" style="padding:2px 8px; font-size:9px">➕ Add to Context</button>
+                        </div>
+                    `;
+
+                    b.querySelector('button').onclick = (e) => {
+                        e.stopPropagation();
+                        Utils.smartPaste(`[Asynchronous Notification from ${source}]\n${content}`);
+                        b.remove();
+                    };
+
+                    container.appendChild(b);
+                    // 主动通知不自动消失，直到用户点击或手动关闭
                     return;
                 }
 
@@ -473,15 +542,20 @@
             };
 
             State.ws.onclose = () => {
-                State.isConnected = false;
-                State.isConnecting = false;
-                updateStatus('Disconnected', 'offline');
-                setTimeout(connect, 10000);
+                if (State.isConnected) {
+                    State.isConnected = false;
+                    State.isConnecting = false;
+                    updateStatus('Disconnected', 'offline');
+                    // 只有非手动关闭的情况下才尝试重连
+                    setTimeout(() => connect(false), 10000);
+                }
             };
 
             State.ws.onerror = () => {
+                State.isConnected = false;
                 State.isConnecting = false;
                 State.consecutiveErrors++;
+                updateStatus('Error', 'offline');
             };
         } catch (e) {
             State.isConnecting = false;
@@ -545,7 +619,13 @@
         document.querySelector('.tm-status-bar').onclick = toggleConnection;
 
         document.getElementById('tm-run').onclick = () => {
-            if (State.isConnected) State.ws.send(document.getElementById('tm-cmd-box').value);
+            if (State.isConnected) {
+                // 发送带 SessionID 的结构化指令包
+                State.ws.send(JSON.stringify({
+                    sessionId: savedConfig.sessionId,
+                    command: document.getElementById('tm-cmd-box').value
+                }));
+            }
         };
 
         // 全文导出逻辑 (独立扫描，抓取原始源码，增强稳定性)
@@ -802,12 +882,14 @@
                 attempts++;
                 try {
                     const newText = await navigator.clipboard.readText();
-                    // 如果内容变了，或者虽然没变但已经确认点击了复制按钮且重试多次
                     if (newText && (newText !== oldText || attempts > 8)) {
                         clearInterval(check);
-                        // 强制更新并发送，不再判断内容是否一致，以响应用户的手动点击
                         State.lastCapturedText = newText;
-                        State.ws.send(newText);
+                        // 统一使用带 SessionID 的 JSON 格式
+                        State.ws.send(JSON.stringify({
+                            sessionId: savedConfig.sessionId,
+                            command: newText
+                        }));
                         Utils.notify('📋 Content sent (Polling)');
                     } else if (attempts >= 15) {
                         clearInterval(check);

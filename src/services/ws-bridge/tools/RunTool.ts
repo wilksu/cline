@@ -93,23 +93,28 @@ export class RunTool extends BaseTool<RunParams> {
 
 			const commandProcess = terminalManager.runCommand(terminalInfo, wrappedCommand)
 
-			// --- Dynamic Configuration ---
+			// --- Dynamic Configuration & Output Management ---
 			const _stateManager = StateManager.get()
 			const envLimit = process.env.CLINE_RUN_OUTPUT_LIMIT ? parseInt(process.env.CLINE_RUN_OUTPUT_LIMIT) : NaN
 			const userLimit = _stateManager.getGlobalSettingsKey("terminalOutputLineLimit")
-			const LIMIT = !isNaN(envLimit) ? envLimit : (userLimit ? userLimit * 100 : 30000)
+			
+			// Use byte-based limit for safety (consistent with ReadTool)
+			const MAX_OUTPUT_BYTES = !isNaN(envLimit) ? envLimit : (userLimit ? userLimit * 500 : 256 * 1024) // Default 256KB
 
 			const outputLines: string[] = []
-			let currentOutputLength = 0
+			let totalBytes = 0
 
 			commandProcess.on("line", (line: string) => {
-				// Prevent memory leak on massive logs by keeping only the recent lines that fit the limit
-				if (currentOutputLength > LIMIT * 1.5) {
-					outputLines.shift() // Remove oldest line
-				} else {
-					currentOutputLength += line.length + 1
+				const lineBytes = Buffer.byteLength(line, 'utf8') + 1
+				if (totalBytes + lineBytes > MAX_OUTPUT_BYTES) {
+					// If we hit the limit, we keep the most recent output
+					if (outputLines.length > 0) {
+						const removed = outputLines.shift()
+						if (removed) totalBytes -= (Buffer.byteLength(removed, 'utf8') + 1)
+					}
 				}
 				outputLines.push(line)
+				totalBytes += lineBytes
 			})
 
 			// 🚨 Intelligent Timeout Mechanism
@@ -131,15 +136,16 @@ export class RunTool extends BaseTool<RunParams> {
 			}
 
 			const output = outputLines.join("\n")
-			const truncatedOutput =
-				output.length > LIMIT 
-				? `...[truncated ${output.length - LIMIT} chars]...\n` + output.substring(output.length - LIMIT) 
-				: output
+			const isTruncated = totalBytes >= MAX_OUTPUT_BYTES
 
-			let finalLlmContent = truncatedOutput || "Command executed successfully (no output)."
+			let finalLlmContent = output || "Command executed successfully (no output)."
 			
+			if (isTruncated) {
+				finalLlmContent = `[NOTICE: Output truncated due to ${MAX_OUTPUT_BYTES / 1024}KB limit]\n...\n${finalLlmContent}`
+			}
+
 			if (isTimeout) {
-				finalLlmContent += "\n\n[SYSTEM NOTE: Command is still running in the background. Returning recent output.]"
+				finalLlmContent += "\n\n[SYSTEM NOTE: Command is still running. You can continue with other tasks or wait for further output in the next turn.]"
 			}
 
 			return {

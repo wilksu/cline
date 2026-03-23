@@ -9,6 +9,7 @@ import { getErrorMessage, isPathWithinWorkspace, makeRelative } from "../utils"
 export interface LSToolParams {
 	paths: string[]
 	recursive?: boolean
+	depth?: number
 	include?: string
 	ignore?: string[]
 	long?: boolean
@@ -38,6 +39,8 @@ export class LSTool extends BaseTool<LSToolParams> {
 				params.recursive = true
 			} else if (arg === "-l" || arg === "--long") {
 				params.long = true
+			} else if ((arg === "--depth" || arg === "-d") && i + 1 < args.length) {
+				params.depth = parseInt(args[++i])
 			} else if ((arg === "--include" || arg === "-i") && i + 1 < args.length) {
 				params.include = args[++i]
 			} else if ((arg === "--ignore" || arg === "-I") && i + 1 < args.length) {
@@ -59,8 +62,11 @@ export class LSTool extends BaseTool<LSToolParams> {
 			// Use native ClineIgnoreController
 			const ignoreController = await this.getIgnoreController()
 
-			// 递归深度控制：LLM 通常不需要超过 5 层的深度
-			const maxDepth = params.recursive ? 5 : 0
+			// 递归深度逻辑：默认 5 层，允许参数覆盖，硬上限 15 层
+			let maxDepth = 0
+			if (params.recursive) {
+				maxDepth = params.depth !== undefined ? Math.min(params.depth, 15) : 5
+			}
 
 			for (let i = 0; i < targetPaths.length; i++) {
 				let p = targetPaths[i]

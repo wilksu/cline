@@ -24,6 +24,8 @@ export const TOOL_NAMES: Record<string, string> = {
 	cmd: "run",
 	browser: "browser",
 	mcp: "mcp",
+	problems: "problems",
+	diag: "problems",
 	symbol: "symbol",
 	rm: "rm",
 	delete: "rm",

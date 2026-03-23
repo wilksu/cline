@@ -11,6 +11,8 @@ import { Logger } from "./Logger"
 import { executeCommands } from "./ToolExecutor"
 
 let wss: WebSocketServer | null = null
+// 使用 Map 维护会话：SessionID -> WebSocket
+const sessionMap = new Map<string, WebSocket>()
 
 /**
  * Start the WebSocket server
@@ -37,12 +39,57 @@ export function startServer(port: number = 3456): void {
 
 	wss.on("connection", (ws: WebSocket) => {
 		Logger.info("WebSocket client connected")
+		let currentSessionId: string | null = null
 
-		ws.on("message", async (messageBuffer: Buffer) => {
-			const inputText = messageBuffer.toString("utf-8")
-			Logger.info(`WS message received: ${inputText.substring(0, 50)}...`)
+		// 全局通知路由（异步导入 WebviewProvider 以规避循环依赖）
+		import("../../core/webview").then((module) => {
+			const provider = module.WebviewProvider.getInstance()
+			if (provider?.controller?.mcpHub) {
+				provider.controller.mcpHub.setNotificationCallback((serverName, level, message) => {
+					const payload = JSON.stringify({
+						type: "proactive_notification",
+						source: `MCP:${serverName}`,
+						level,
+						content: message,
+					})
+					// 广播给所有活跃会话
+					for (const client of sessionMap.values()) {
+						if (client.readyState === WebSocket.OPEN) {
+							client.send(payload)
+						}
+					}
+				})
+			}
+		}).catch(err => Logger.error("Failed to link MCP notifications", err))
+
+		ws.on("message", async (messageData: any) => {
+			// 解决找不到 Buffer 类型的问题：直接通过通用 toString 处理
+			const rawText = messageData.toString("utf-8")
+			let inputText = rawText
+			
+			// 尝试解析会话协议包
+			try {
+				const parsed = JSON.parse(rawText)
+				if (parsed.type === "hello" && typeof parsed.sessionId === "string") {
+					const sid: string = parsed.sessionId
+					currentSessionId = sid
+					sessionMap.set(sid, ws)
+					Logger.info(`Session bound: ${sid}`)
+					ws.send(JSON.stringify({ type: "hello_ack", sessionId: sid }))
+					return
+				}
+				if (typeof parsed.sessionId === "string") {
+					currentSessionId = parsed.sessionId
+				}
+				if (parsed.command) inputText = parsed.command
+			} catch(e) {
+				// 兼容旧的纯文本协议
+			}
+
+			Logger.info(`WS message received from [${currentSessionId || 'unknown'}]: ${inputText.substring(0, 50)}...`)
 
 			try {
+				// 未来可在 executeCommands 中注入 currentSessionId 以实现执行流隔离
 				const response = await executeCommands(inputText)
 				ws.send(response)
 			} catch (error: unknown) {
@@ -53,7 +100,18 @@ export function startServer(port: number = 3456): void {
 		})
 
 		ws.on("close", () => {
-			Logger.info("WebSocket client disconnected")
+			Logger.info(`WebSocket client [${currentSessionId || "unknown"}] disconnected`)
+			if (currentSessionId) {
+				sessionMap.delete(currentSessionId)
+			}
+
+			// 仅当没有剩余连接时才清除回调
+			if (sessionMap.size === 0) {
+				import("../../core/webview").then((module) => {
+					const provider = module.WebviewProvider.getInstance()
+					provider?.controller?.mcpHub?.clearNotificationCallback()
+				}).catch(err => Logger.error("Failed to clear MCP callback", err))
+			}
 		})
 
 		ws.on("error", (error: Error) => {
