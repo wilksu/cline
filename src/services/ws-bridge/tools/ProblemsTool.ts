@@ -1,4 +1,4 @@
-import * as vscode from "vscode"
+import { HostProvider } from "@/hosts/host-provider"
 import { BaseTool } from "../BaseTool"
 import type { ToolResult } from "../types"
 import { getErrorMessage, makeRelative } from "../utils"
@@ -21,55 +21,67 @@ export class ProblemsTool extends BaseTool<ProblemsParams> {
 	async execute(params: ProblemsParams): Promise<ToolResult> {
 		try {
 			const ignoreController = await this.getIgnoreController()
-			// 使用 vscode 命名空间获取诊断信息
-			// biome-ignore lint/nursery/noRestrictedImports: This tool specifically bridge VS Code's internal diagnostics to the webview
-			const diagnostics = vscode.languages.getDiagnostics()
+
+			// 1. 调用 HostBridge 获取按文件分组的诊断信息
+			const response = await HostProvider.workspace.getDiagnostics({})
+			const fileDiagnostics = response.fileDiagnostics || []
 
 			const MAX_ITEMS = 50
 			const MAX_BYTES = 100 * 1024 // 100KB
-			
+
 			let outputLines: string[] = []
 			let errorCount = 0
 			let warningCount = 0
 			let totalBytes = 0
 			let isTruncated = false
 
-			// 扁平化所有诊断信息
-			const allProblems = diagnostics.flatMap(([uri, diagList]) => {
-				const fsPath = uri.fsPath
-				// 过滤逻辑：不在工作区、被忽略的文件、或者指定了路径但不匹配
-				if (!fsPath.startsWith(this.workspaceRoot)) return []
-				if (this.isPathIgnored(ignoreController, fsPath)) return []
-				if (params.filePath && !fsPath.includes(params.filePath)) return []
+			// 2. 扁平化数据并进行过滤
+			const allProblems: { filePath: string; diag: any }[] = []
+			for (const fileGroup of fileDiagnostics) {
+				const fsPath = fileGroup.filePath
+				if (!fsPath) continue
 
-				return diagList.map(d => ({ uri, diag: d }))
-			})
+				// 过滤逻辑：不属于当前工作区或被忽略的文件
+				if (!fsPath.startsWith(this.workspaceRoot)) continue
+				if (this.isPathIgnored(ignoreController, fsPath)) continue
+				if (params.filePath && !fsPath.includes(params.filePath)) continue
 
-			// 排序：错误优先，然后按行号
+				if (fileGroup.diagnostics) {
+					for (const d of fileGroup.diagnostics) {
+						// 只关注 Error (1) 和 Warning (2)
+						if (d.severity === 1 || d.severity === 2) {
+							allProblems.push({ filePath: fsPath, diag: d })
+						}
+					}
+				}
+			}
+
+			// 3. 排序：错误优先，然后按行号
 			allProblems.sort((a, b) => {
-				if (a.diag.severity !== b.diag.severity) return a.diag.severity - b.diag.severity
-				return a.diag.range.start.line - b.diag.range.start.line
+				if (a.diag.severity !== b.diag.severity) return (a.diag.severity || 0) - (b.diag.severity || 0)
+				return (a.diag.range?.start?.line || 0) - (b.diag.range?.start?.line || 0)
 			})
 
 			for (const item of allProblems) {
+				const diag = item.diag
 				if (outputLines.length >= MAX_ITEMS) {
 					isTruncated = true
 					break
 				}
 
-				const severity = this.getSeverityLabel(item.diag.severity)
-				if (item.diag.severity === vscode.DiagnosticSeverity.Error) errorCount++
-				else if (item.diag.severity === vscode.DiagnosticSeverity.Warning) warningCount++
-				else continue // 忽略 Info 和 Hint
+				const severityLabel = this.getSeverityLabel(diag.severity || 0)
+				if (diag.severity === 1) errorCount++
+				else if (diag.severity === 2) warningCount++
 
-				const relPath = makeRelative(item.uri.fsPath, this.workspaceRoot)
-				const line = item.diag.range.start.line + 1
-				const col = item.diag.range.start.character + 1
-				const message = item.diag.message.replace(/\r?\n/g, " ")
-				const source = item.diag.source ? ` [${item.diag.source}]` : ""
+				const relPath = makeRelative(item.filePath, this.workspaceRoot)
+				const line = (diag.range?.start?.line || 0) + 1
+				const col = (diag.range?.start?.character || 0) + 1
+				const message = (diag.message || "").replace(/\r?\n/g, " ")
+				const source = diag.source ? ` [${diag.source}]` : ""
 				
-				const formatted = `[${severity}] ${relPath}:${line}:${col} - ${message}${source}`
-				const lineBytes = Buffer.byteLength(formatted, 'utf8') + 1
+				const formatted = `[${severityLabel}] ${relPath}:${line}:${col} - ${message}${source}`
+				// 替代 Buffer.byteLength 以兼容环境并消除 TS 报错
+				const lineBytes = new TextEncoder().encode(formatted).length + 1
 
 				if (totalBytes + lineBytes > MAX_BYTES) {
 					isTruncated = true
@@ -98,12 +110,12 @@ export class ProblemsTool extends BaseTool<ProblemsParams> {
 		}
 	}
 
-	private getSeverityLabel(severity: vscode.DiagnosticSeverity): string {
+	private getSeverityLabel(severity: number): string {
 		switch (severity) {
-			case vscode.DiagnosticSeverity.Error: return "ERROR"
-			case vscode.DiagnosticSeverity.Warning: return "WARNING"
-			case vscode.DiagnosticSeverity.Information: return "INFO"
-			case vscode.DiagnosticSeverity.Hint: return "HINT"
+			case 1: return "ERROR"
+			case 2: return "WARNING"
+			case 3: return "INFO"
+			case 4: return "HINT"
 			default: return "UNKNOWN"
 		}
 	}
