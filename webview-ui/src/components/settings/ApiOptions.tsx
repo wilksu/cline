@@ -51,6 +51,7 @@ import { TogetherProvider } from "./providers/TogetherProvider"
 import { VercelAIGatewayProvider } from "./providers/VercelAIGatewayProvider"
 import { VertexProvider } from "./providers/VertexProvider"
 import { VSCodeLmProvider } from "./providers/VSCodeLmProvider"
+import { WandbProvider } from "./providers/WandbProvider"
 import { XaiProvider } from "./providers/XaiProvider"
 import { ZAiProvider } from "./providers/ZAiProvider"
 import { useApiConfigurationHandlers } from "./utils/useApiConfigurationHandlers"
@@ -307,6 +308,7 @@ const ApiOptions = ({
 						}}
 						onKeyDown={handleKeyDown}
 						placeholder="Search and select provider..."
+						role="combobox"
 						style={{
 							width: "100%",
 							zIndex: DROPDOWN_Z_INDEX,
@@ -333,7 +335,7 @@ const ApiOptions = ({
 						)}
 					</VSCodeTextField>
 					{isDropdownVisible && (
-						<ProviderDropdownList ref={dropdownListRef}>
+						<ProviderDropdownList ref={dropdownListRef} role="listbox">
 							{providerSearchResults.map((item, index) => (
 								<ProviderDropdownItem
 									data-testid={`provider-option-${item.value}`}
@@ -343,7 +345,8 @@ const ApiOptions = ({
 									onMouseEnter={() => setSelectedIndex(index)}
 									ref={(el) => {
 										itemRefs.current[index] = el
-									}}>
+									}}
+									role="option">
 									<span>{item.html}</span>
 								</ProviderDropdownItem>
 							))}
@@ -475,6 +478,10 @@ const ApiOptions = ({
 
 			{apiConfiguration && selectedProvider === "nebius" && (
 				<NebiusProvider currentMode={currentMode} isPopup={isPopup} showModelOptions={showModelOptions} />
+			)}
+
+			{apiConfiguration && selectedProvider === "wandb" && (
+				<WandbProvider currentMode={currentMode} isPopup={isPopup} showModelOptions={showModelOptions} />
 			)}
 
 			{apiConfiguration && selectedProvider === "xai" && (

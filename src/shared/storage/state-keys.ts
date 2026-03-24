@@ -9,13 +9,12 @@ import {
 } from "@shared/api"
 import { BrowserSettings, DEFAULT_BROWSER_SETTINGS } from "@shared/BrowserSettings"
 import { ClineRulesToggles } from "@shared/cline-rules"
-import { DEFAULT_DICTATION_SETTINGS, DictationSettings } from "@shared/DictationSettings"
 import { DEFAULT_FOCUS_CHAIN_SETTINGS, FocusChainSettings } from "@shared/FocusChainSettings"
 import { HistoryItem } from "@shared/HistoryItem"
 import { DEFAULT_MCP_DISPLAY_MODE, McpDisplayMode } from "@shared/McpDisplayMode"
 import { WorkspaceRoot } from "@shared/multi-root/types"
 import { GlobalInstructionsFile } from "@shared/remote-config/schema"
-import { Mode, OpenaiReasoningEffort } from "@shared/storage/types"
+import { Mode } from "@shared/storage/types"
 import { TelemetrySetting } from "@shared/TelemetrySetting"
 import { UserInfo } from "@shared/UserInfo"
 import { LanguageModelChatSelector } from "vscode"
@@ -58,11 +57,15 @@ const REMOTE_CONFIG_EXTRA_FIELDS = {
 	remoteGlobalWorkflows: { default: undefined as GlobalInstructionsFile[] | undefined },
 	blockPersonalRemoteMCPServers: { default: false as boolean },
 	openTelemetryOtlpHeaders: { default: undefined as Record<string, string> | undefined },
+	otlpMetricsHeaders: { default: undefined as Record<string, string> | undefined },
+	otlpLogsHeaders: { default: undefined as Record<string, string> | undefined },
 	blobStoreConfig: { default: undefined as BlobStoreSettings | undefined },
 	configuredApiKeys: { default: {} as ConfiguredAPIKeys | undefined },
 } satisfies FieldDefinitions
 
 const GLOBAL_STATE_FIELDS = {
+	clineVersion: { default: undefined as string | undefined },
+	"cline.generatedMachineId": { default: undefined as string | undefined }, // Note, distinctId reads/writes this directly from/to StorageContext before StateManager is initialized.
 	lastShownAnnouncementId: { default: undefined as string | undefined },
 	taskHistory: { default: [] as HistoryItem[], isAsync: true },
 	userInfo: { default: undefined as UserInfo | undefined },
@@ -78,7 +81,7 @@ const GLOBAL_STATE_FIELDS = {
 	mcpDisplayMode: { default: DEFAULT_MCP_DISPLAY_MODE as McpDisplayMode },
 	workspaceRoots: { default: undefined as WorkspaceRoot[] | undefined },
 	primaryRootIndex: { default: 0 as number },
-	multiRootEnabled: { default: false as boolean },
+	multiRootEnabled: { default: true as boolean },
 	lastDismissedInfoBannerVersion: { default: 0 as number },
 	lastDismissedModelBannerVersion: { default: 0 as number },
 	lastDismissedCliBannerVersion: { default: 0 as number },
@@ -136,6 +139,7 @@ const API_HANDLER_SETTINGS_FIELDS = {
 	ocaMode: { default: "internal" as string },
 	aihubmixBaseUrl: { default: undefined as string | undefined },
 	aihubmixAppCode: { default: undefined as string | undefined },
+	enableParallelToolCalling: { default: true as boolean },
 
 	// Plan mode configurations
 	planModeApiModelId: { default: undefined as string | undefined },
@@ -148,6 +152,8 @@ const API_HANDLER_SETTINGS_FIELDS = {
 	planModeAwsBedrockCustomModelBaseId: { default: undefined as string | undefined },
 	planModeOpenRouterModelId: { default: undefined as string | undefined },
 	planModeOpenRouterModelInfo: { default: undefined as ModelInfo | undefined },
+	planModeClineModelId: { default: undefined as string | undefined },
+	planModeClineModelInfo: { default: undefined as ModelInfo | undefined },
 	planModeOpenAiModelId: { default: undefined as string | undefined },
 	planModeOpenAiModelInfo: { default: undefined as OpenAiCompatibleModelInfo | undefined },
 	planModeOllamaModelId: { default: undefined as string | undefined },
@@ -190,6 +196,8 @@ const API_HANDLER_SETTINGS_FIELDS = {
 	actModeAwsBedrockCustomModelBaseId: { default: undefined as string | undefined },
 	actModeOpenRouterModelId: { default: undefined as string | undefined },
 	actModeOpenRouterModelInfo: { default: undefined as ModelInfo | undefined },
+	actModeClineModelId: { default: undefined as string | undefined },
+	actModeClineModelInfo: { default: undefined as ModelInfo | undefined },
 	actModeOpenAiModelId: { default: undefined as string | undefined },
 	actModeOpenAiModelInfo: { default: undefined as OpenAiCompatibleModelInfo | undefined },
 	actModeOllamaModelId: { default: undefined as string | undefined },
@@ -249,27 +257,21 @@ const USER_SETTINGS_FIELDS = {
 	defaultTerminalProfile: { default: "default" as string },
 	terminalOutputLineLimit: { default: 500 as number },
 	maxConsecutiveMistakes: { default: 3 as number },
-	subagentTerminalOutputLineLimit: { default: 2000 as number },
-	strictPlanModeEnabled: { default: true as boolean },
+	strictPlanModeEnabled: { default: false as boolean },
+	hooksEnabled: { default: true as boolean },
 	yoloModeToggled: { default: false as boolean },
+	autoApproveAllToggled: { default: false as boolean },
 	useAutoCondense: { default: false as boolean },
+	subagentsEnabled: { default: false as boolean },
 	clineWebToolsEnabled: { default: true as boolean },
 	worktreesEnabled: { default: false as boolean },
 	preferredLanguage: { default: "English" as string },
-	openaiReasoningEffort: { default: "medium" as OpenaiReasoningEffort },
 	mode: { default: "act" as Mode },
-	dictationSettings: {
-		default: DEFAULT_DICTATION_SETTINGS as DictationSettings,
-		transform: (v: any) => ({ ...DEFAULT_DICTATION_SETTINGS, ...v }),
-	},
 	focusChainSettings: { default: DEFAULT_FOCUS_CHAIN_SETTINGS as FocusChainSettings },
 	customPrompt: { default: undefined as "compact" | undefined },
-	autoCondenseThreshold: { default: 0.75 as number }, // number from 0 to 1
-	subagentsEnabled: { default: false as boolean },
-	enableParallelToolCalling: { default: false as boolean },
 	backgroundEditEnabled: { default: false as boolean },
-	skillsEnabled: { default: false as boolean },
 	optOutOfRemoteConfig: { default: false as boolean },
+	doubleCheckCompletionEnabled: { default: false as boolean },
 
 	// OpenTelemetry configuration
 	openTelemetryEnabled: { default: true as boolean },
@@ -298,6 +300,7 @@ const GLOBAL_STATE_AND_SETTINGS_FIELDS = { ...GLOBAL_STATE_FIELDS, ...SETTINGS_F
 // Secret keys used in Api Configuration
 const SECRETS_KEYS = [
 	"apiKey",
+	"clineApiKey",
 	"clineAccountId", // Cline Account ID for Firebase
 	"cline:clineAccountId",
 	"openRouterApiKey",
@@ -341,8 +344,12 @@ const SECRETS_KEYS = [
 	"ocaApiKey",
 	"ocaRefreshToken",
 	"mcpOAuthSecrets",
+	"openai-codex-oauth-credentials", // JSON blob containing OAuth tokens for OpenAI Codex (ChatGPT subscription)
+	"wandbApiKey",
 ] as const
 
+// WARNING, these are not ALL of the local state keys in practice. For example, FileContextTracker
+// uses dynamic keys like pendingFileContextWarning_${taskId}.
 export const LocalStateKeys = [
 	"localClineRulesToggles",
 	"localCursorRulesToggles",
