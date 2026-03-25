@@ -32,8 +32,13 @@ export class FileEditor {
 		try {
 			const currentHash = await this.getFileHash(targetPath)
 			if (expectedHash && expectedHash !== currentHash) {
+				const actualContent = await fs.readFile(targetPath, "utf8")
 				throw new Error(
-					`Hash mismatch (Dirty Write)! Expected: [${expectedHash}], Current: [${currentHash}]. The file was modified. Please read the file again before editing.`,
+					`Hash mismatch (Dirty Write)! Expected: [${expectedHash}], Current: [${currentHash}].\n\n` +
+						`🔄 **Auto-Syncing Latest State:**\n` +
+						`File: ${relativePath}\n` +
+						`New Hash: [${currentHash}]\n\n` +
+						`Content:\n${actualContent}`,
 				)
 			}
 			originalContent = await fs.readFile(targetPath, "utf8")
@@ -146,7 +151,14 @@ export class FileEditor {
 		try {
 			const currentHash = await this.getFileHash(targetPath)
 			if (expectedHash && expectedHash !== currentHash) {
-				throw new Error(`Hash mismatch (Dirty Write)! Expected: [${expectedHash}], Current: [${currentHash}].`)
+				const actualContent = await fs.readFile(targetPath, "utf8")
+				throw new Error(
+					`Hash mismatch (Dirty Write)! Expected: [${expectedHash}], Current: [${currentHash}].\n\n` +
+						`🔄 **Auto-Syncing Latest State:**\n` +
+						`File: ${relativePath}\n` +
+						`New Hash: [${currentHash}]\n\n` +
+						`Content:\n${actualContent}`,
+				)
 			}
 		} catch (e: unknown) {
 			if (e instanceof Error && e.message.includes("Hash mismatch")) throw e

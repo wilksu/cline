@@ -619,13 +619,7 @@
         document.querySelector('.tm-status-bar').onclick = toggleConnection;
 
         document.getElementById('tm-run').onclick = () => {
-            if (State.isConnected) {
-                // 发送带 SessionID 的结构化指令包
-                State.ws.send(JSON.stringify({
-                    sessionId: savedConfig.sessionId,
-                    command: document.getElementById('tm-cmd-box').value
-                }));
-            }
+            sendCommand(document.getElementById('tm-cmd-box').value);
         };
 
         // 全文导出逻辑 (独立扫描，抓取原始源码，增强稳定性)
@@ -666,6 +660,16 @@
             a.click();
             URL.revokeObjectURL(url);
             Utils.notify('💾 Exported as Markdown');
+        };
+
+        // 统一发送函数：封装 SessionID
+        const sendCommand = (cmd) => {
+            if (!State.isConnected || !cmd) return;
+            const payload = JSON.stringify({
+                sessionId: savedConfig.sessionId,
+                command: cmd
+            });
+            State.ws.send(payload);
         };
 
         // 抽取为独立函数，方便在错误时触发降级
@@ -727,7 +731,7 @@
                 item.className = 'minimap-item';
                 item.innerHTML = `<span class="minimap-text">${idx+1}. ${summary}</span><span class="minimap-copy-btn">SEND</span>`;
                 item.onclick = (e) => e.target.classList.contains('minimap-copy-btn') ? 
-                    (State.isConnected && State.ws.send(Utils.extractMarkdown(node))) : 
+                    sendCommand(Utils.extractMarkdown(node)) : 
                     node.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 container.appendChild(item);
             });
