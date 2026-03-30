@@ -74,7 +74,7 @@ export function startServer(port: number = 3456): void {
 					const sid: string = parsed.sessionId
 					currentSessionId = sid
 					sessionMap.set(sid, ws)
-					Logger.info(`Session bound: ${sid}`)
+					Logger.info(`[Auth] Session identified and bound: ${sid}`)
 					ws.send(JSON.stringify({ type: "hello_ack", sessionId: sid }))
 					return
 				}
@@ -100,7 +100,7 @@ export function startServer(port: number = 3456): void {
 		})
 
 		ws.on("close", () => {
-			Logger.info(`WebSocket client [${currentSessionId || "unknown"}] disconnected`)
+			Logger.info(`[WS] Client disconnected. Session: ${currentSessionId || "unknown"}`)
 			if (currentSessionId) {
 				sessionMap.delete(currentSessionId)
 			}

@@ -11,23 +11,28 @@ function timestamp(): string {
 
 export const Logger = {
 	info(message: string, ...args: unknown[]): void {
-		const formatted = args.length > 0 ? `${message} ${JSON.stringify(args)}` : message
-		HostProvider.get().logToChannel(`[${timestamp()}] [INFO] ${formatted}`)
+		const formatted = args.length > 0 ? `${message} ${args.map((a) => (typeof a === "object" ? JSON.stringify(a) : a)).join(" ")}` : message
+		HostProvider.get().logToChannel(`[${timestamp()}] [INFO] ℹ️ ${formatted}`)
 	},
 
 	warn(message: string, ...args: unknown[]): void {
-		const formatted = args.length > 0 ? `${message} ${JSON.stringify(args)}` : message
-		HostProvider.get().logToChannel(`[${timestamp()}] [WARN] ${formatted}`)
+		const formatted = args.length > 0 ? `${message} ${args.map((a) => (typeof a === "object" ? JSON.stringify(a) : a)).join(" ")}` : message
+		HostProvider.get().logToChannel(`[${timestamp()}] [WARN] ⚠️ ${formatted}`)
 	},
 
 	error(message: string, error?: unknown): void {
-		const errorStr = error instanceof Error ? error.message : error ? String(error) : ""
-		HostProvider.get().logToChannel(`[${timestamp()}] [ERROR] ${message} ${errorStr}`)
+		let errorDetails = ""
+		if (error instanceof Error) {
+			errorDetails = `\nStack: ${error.stack}`
+		} else if (error) {
+			errorDetails = ` ${JSON.stringify(error)}`
+		}
+		HostProvider.get().logToChannel(`[${timestamp()}] [ERROR] ❌ ${message}${errorDetails}`)
 	},
 
 	debug(message: string, ...args: unknown[]): void {
-		const formatted = args.length > 0 ? `${message} ${JSON.stringify(args)}` : message
-		HostProvider.get().logToChannel(`[${timestamp()}] [DEBUG] ${formatted}`)
+		const formatted = args.length > 0 ? `${message} ${args.map((a) => (typeof a === "object" ? JSON.stringify(a) : a)).join(" ")}` : message
+		HostProvider.get().logToChannel(`[${timestamp()}] [DEBUG] 🔍 ${formatted}`)
 	},
 
 	show(): void {

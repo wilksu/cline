@@ -49,14 +49,21 @@
     };
     let savedConfig = getConfig();
 
+    // --- 国际化配置 ---
+    const LANG = {
+        zh: { run: '执行', loop: '循环', paste: '粘贴', send: '发送', copy: '拷贝', connected: '已连接', disconnected: '已断开', connecting: '连接中...', push: '主动推送', addContext: '加入上下文' },
+        en: { run: 'RUN', loop: 'Loop', paste: 'Paste', send: 'Send', copy: 'Copy', connected: 'Connected', disconnected: 'Disconnected', connecting: 'Connecting...', push: 'PUSH', addContext: 'Add to Context' }
+    };
+    const I18N = location.language?.startsWith('zh') ? LANG.zh : LANG.en;
+
     // --- platform adapter defines ---
     const ADAPTERS = {
         'chatgpt.com': {
             name: 'ChatGPT',
             input: '#prompt-textarea',
-            sendBtn: '[data-testid="send-button"]',
-            stopBtn: '[data-testid="stop-button"]',
-            copyBtn: 'button[data-testid="copy-turn-action-button"]',
+            sendBtn: '[data-testid="send-button"], button:has(svg path[d*="M15.192"])', // 增加 SVG 特征匹配作为保底
+            stopBtn: '[data-testid="stop-button"], [aria-label*="Stop"], [aria-label*="停止"]',
+            copyBtn: 'button[data-testid*="copy"]',
             // 获取内容：ChatGPT 使用 textarea
             getContent: (el) => el.value,
             // 写入内容：使用 DataTransfer 模拟原生粘贴以保持高性能
@@ -76,9 +83,9 @@
         'gemini.google.com': {
             name: 'Gemini',
             input: 'div.ql-editor[contenteditable="true"]',
-            sendBtn: 'button[aria-label*="Send"], button[aria-label*="发送"]',
+            sendBtn: 'button[aria-label*="Send"], button[aria-label*="发送"], .send-button-container button',
             stopBtn: 'button[aria-label*="Stop"], button[aria-label*="停止"], button:has(mat-icon[fonticon="stop"])',
-            copyBtn: 'button[data-test-id="copy-button"]',
+            copyBtn: 'button[data-test-id*="copy"]',
             getContent: (el) => el.innerText || el.textContent,
             fixInput: (el, text) => {
                 el.focus();
@@ -115,16 +122,18 @@
         },
         'copilot.microsoft.com': {
             name: 'Copilot',
-            input: 'textarea#userInput',
-            sendBtn: 'button[data-testid="submit-button"]',
-            stopBtn: 'button[aria-label="停止响应"]',
-            copyBtn: 'button[data-testid="copy-ai-message-button"]',
+            input: 'textarea[data-testid="composer-input"]',
+            sendBtn: 'button[data-testid*="send-button"], button[aria-label*="发送"], button[aria-label*="Send"]',
+            stopBtn: 'button[data-testid*="stop-button"], button[aria-label*="中断"], button[aria-label*="Stop"]',
+            copyBtn: 'button[data-testid*="copy-message-button"], [data-testid*="copy-ai-message"]',
             getContent: (el) => el.value,
             fixInput: (el, text) => {
                 el.focus();
                 const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value").set;
                 setter.call(el, (el.value || "") + text);
-                el.dispatchEvent(new Event('input', { bubbles: true }));
+                ['input', 'change'].forEach(t => el.dispatchEvent(new Event(t, { bubbles: true })));
+                el.style.height = 'auto';
+                el.style.height = el.scrollHeight + 'px';
             }
         },
         'claude.ai': {
@@ -230,46 +239,60 @@
             display: flex; justify-content: flex-end;
         }
 
-        /* Minimap 独立悬浮样式 */
+        /* Minimap 独立悬浮样式 - 极致融合版 */
         #tm-minimap {
-            position: fixed; right: 15px; top: 50%; transform: translateY(-50%);
-            width: 110px; height: 65vh; z-index: 9995;
-            background: rgba(128, 128, 128, 0.03); backdrop-filter: blur(12px);
-            padding: 10px 5px; overflow-y: auto; overflow-x: hidden;
-            display: flex; flex-direction: column; gap: 4px;
-            scrollbar-width: none; border-radius: 12px; border: none;
-            transition: 0.3s;
+            position: fixed; right: 5px; top: 50%; transform: translateY(-50%);
+            width: 120px; height: 70vh; z-index: 100;
+            background: transparent;
+            backdrop-filter: blur(2px); /* 极弱模糊，保持通透 */
+            padding: 10px 2px; overflow-y: auto; overflow-x: hidden;
+            display: flex; flex-direction: column; gap: 2px;
+            scrollbar-width: none; border: none;
+            transition: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            pointer-events: none;
         }
-        /* 导出按钮作为 Minimap 的左侧“挂件” */
+        #tm-minimap:hover { width: 140px; backdrop-filter: blur(8px); background: rgba(128,128,128,0.05); }
+
+        /* 导出按钮作为隐形的挂件 */
         #tm-mini-exp {
-            position: fixed; right: 125px; top: 50%; transform: translateY(-50%);
-            width: 28px; height: 28px; border-radius: 14px;
-            background: var(--br-bg); border: 1px solid rgba(128,128,128,0.2);
+            position: fixed; right: 130px; top: 50%; transform: translateY(-50%);
+            width: 24px; height: 24px; border-radius: 12px;
+            background: transparent; border: 1px solid rgba(128,128,128,0.1);
             display: flex; align-items: center; justify-content: center;
-            cursor: pointer; z-index: 9996; font-size: 14px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.15); opacity: 0.8; transition: 0.2s;
+            cursor: pointer; z-index: 101; font-size: 12px;
+            opacity: 0.2; transition: 0.3s;
         }
-        #tm-mini-exp:hover { opacity: 1; transform: translateY(-50%) scale(1.1); background: var(--br-primary); color: white; }
-        @media (max-width: 1200px) { #tm-minimap { right: 10px; width: 60px; } .minimap-text { display: none; } }
+        #tm-mini-exp:hover { opacity: 0.8; background: var(--br-primary); border-color: transparent; color: white; }
+
+        @media (max-width: 1200px) { #tm-minimap { right: 2px; width: 40px; } .minimap-text { display: none; } }
         #tm-minimap::-webkit-scrollbar { display: none; }
         
         .minimap-item {
             display: flex; align-items: center; justify-content: space-between;
-            padding: 4px 6px; font-size: 9px; color: var(--br-text);
-            border-radius: 4px; cursor: pointer; transition: all 0.2s ease;
-            background: rgba(128,128,128,0.1); border-right: 3px solid transparent;
-            opacity: 0.35;
+            padding: 6px 8px; font-size: 10px;
+            color: var(--br-text);
+            border-radius: 6px; cursor: pointer; transition: all 0.3s ease;
+            background: transparent;
+            border-right: 2px solid rgba(128,128,128,0.1);
+            opacity: 0.4;
+            pointer-events: auto;
+            white-space: nowrap;
         }
-        /* 鼠标进入容器时，非聚焦项整体压暗 */
-        #tm-minimap:hover .minimap-item { opacity: 0.5; }
         
-        /* 聚焦项与激活项：突出显示 */
-        .minimap-item:hover, .minimap-item.active { 
+        .minimap-item:hover { 
+            opacity: 0.9; 
+            background: rgba(128,128,128,0.08);
+            transform: translateX(-4px);
+        }
+        
+        /* 激活项：仅通过发光边条和亮度识别 */
+        .minimap-item.active { 
             opacity: 1 !important; 
-            background: rgba(var(--br-primary), 0.25); 
-            border-right-color: var(--br-primary);
-            transform: translateX(-2px) scale(1.02);
-            z-index: 5;
+            color: #fff !important;
+            background: linear-gradient(to right, transparent, rgba(var(--br-primary-rgb, 0, 120, 212), 0.1));
+            border-right: 3px solid #0078d4;
+            text-shadow: 0 0 8px rgba(255,255,255,0.4);
+            transform: translateX(-6px);
         }
         /* 相邻项微亮效果 */
         .minimap-item:hover + .minimap-item { opacity: 0.8 !important; }
@@ -354,14 +377,14 @@
                 Active.fixInput(el, textToInsert);
                 
                 if (State.autoSend) {
-                    const delay = this.getRandomDelay();
-                    this.notify(`⏳ Sending in ${(delay/1000).toFixed(1)}s...`);
+                    const delay = Utils.getRandomDelay();
+                    Utils.notify(`⏳ Sending in ${(delay/1000).toFixed(1)}s...`);
                     setTimeout(() => {
                         const btn = document.querySelector(Active.sendBtn);
                         if (btn && !btn.disabled) {
                             btn.click();
                             // 修正：发送后 UI 可能需要重置，且 Minimap 应刷新
-                            setTimeout(() => updateMinimap(true), 500);
+                            setTimeout(() => Minimap.update(true), 500);
                         }
                     }, delay);
                 }
@@ -430,14 +453,6 @@
         const host = (hostEl && hostEl.value) ? hostEl.value.trim() : savedConfig.host;
         const port = (portEl && portEl.value) ? portEl.value.trim() : savedConfig.port;
         const defaultCmd = (cmdEl && cmdEl.value) ? cmdEl.value : savedConfig.defaultCmd;
-        
-        // 更新内存中的配置
-        savedConfig = { ...savedConfig, host, port, defaultCmd };
-        
-        // 三级持久化存储
-        GM_setValue(SESSION_KEY, savedConfig);
-        GM_setValue(DOMAIN_KEY, savedConfig);
-        GM_setValue(GLOBAL_KEY, savedConfig);
 
         try {
             console.log(`[Bridge] Attempting connection to ws://${host}:${port}`);
@@ -448,14 +463,21 @@
                 State.isConnecting = false;
                 State.consecutiveErrors = 0;
                 updateStatus('Connected', 'idle');
+
+                // 只有连接成功才更新并持久化配置
+                savedConfig = { ...savedConfig, host, port, defaultCmd };
+                GM_setValue(SESSION_KEY, savedConfig);
+                GM_setValue(DOMAIN_KEY, savedConfig);
+                GM_setValue(GLOBAL_KEY, savedConfig);
                 
                 // 身份登记：告知后端当前会话 ID
                 State.ws.send(JSON.stringify({
                     type: 'hello',
                     sessionId: savedConfig.sessionId
                 }));
-                console.log('[Bridge] Session identified:', savedConfig.sessionId);
-                Utils.notify('✅ Connected: ' + host);
+                console.log('[Bridge] Session identified & Config saved:', savedConfig.sessionId);
+                // 仅在手动强制连接时弹出通知，静默初始化不弹
+                if (force) Utils.notify('✅ Connected: ' + host);
             };
 
             State.ws.onmessage = (e) => {
@@ -542,11 +564,14 @@
             };
 
             State.ws.onclose = () => {
-                if (State.isConnected) {
-                    State.isConnected = false;
-                    State.isConnecting = false;
-                    updateStatus('Disconnected', 'offline');
-                    // 只有非手动关闭的情况下才尝试重连
+                const wasConnected = State.isConnected;
+                State.isConnected = false;
+                State.isConnecting = false;
+                updateStatus('Disconnected', 'offline');
+                
+                // 如果之前是连接状态且非手动关闭（比如网络波动），则尝试重连
+                if (wasConnected) {
+                    console.log('[Bridge] Connection lost, retrying in 10s...');
                     setTimeout(() => connect(false), 10000);
                 }
             };
@@ -591,24 +616,24 @@
         panel.innerHTML = `
             <div style="font-size:9px; color:#666; margin-bottom:5px; font-weight:bold">UNIVERSAL BRIDGE V0.50</div>
             <div class="tm-row tm-btn-group">
-                <input type="text" id="tm-host" class="tm-input" value="${savedConfig.host}" style="flex:2">
-                <input type="text" id="tm-port" class="tm-input" value="${savedConfig.port}" style="flex:1">
+                <input type="text" id="tm-host" class="tm-input" value="${savedConfig.host}" placeholder="Host" style="flex:2">
+                <input type="text" id="tm-port" class="tm-input" value="${savedConfig.port}" placeholder="Port" style="flex:1">
             </div>
             <div class="tm-row">
-                <textarea id="tm-cmd-box" class="tm-input tm-textarea">${savedConfig.defaultCmd}</textarea>
+                <textarea id="tm-cmd-box" class="tm-input tm-textarea" placeholder="Default Commands">${savedConfig.defaultCmd}</textarea>
             </div>
             <div class="tm-row tm-btn-group">
-                <button id="tm-run" class="tm-btn primary">RUN</button>
-                <button id="tm-loop" class="tm-btn">♾️ Loop</button>
+                <button id="tm-run" class="tm-btn primary">${I18N.run}</button>
+                <button id="tm-loop" class="tm-btn">♾️ ${I18N.loop}</button>
             </div>
             <div id="tm-export" style="display:none"></div>
             <div class="tm-toggles">
-                <label class="tm-label"><input type="checkbox" id="c-paste" checked><span>Paste</span></label>
-                <label class="tm-label"><input type="checkbox" id="c-send"><span>Send</span></label>
-                <label class="tm-label"><input type="checkbox" id="c-copy"><span>Copy</span></label>
+                <label class="tm-label"><input type="checkbox" id="c-paste" checked><span>${I18N.paste}</span></label>
+                <label class="tm-label"><input type="checkbox" id="c-send"><span>${I18N.send}</span></label>
+                <label class="tm-label"><input type="checkbox" id="c-copy"><span>${I18N.copy}</span></label>
             </div>
             <div class="tm-status-bar">
-                <div><span id="tm-status-dot" style="display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:4px"></span><span id="tm-status-text">Connecting...</span></div>
+                <div><span id="tm-status-dot" style="display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:4px"></span><span id="tm-status-text">${I18N.connecting}</span></div>
                 <div id="tm-ai-info">AI: Idle</div>
             </div>
         `;
@@ -665,6 +690,13 @@
         // 统一发送函数：封装 SessionID
         const sendCommand = (cmd) => {
             if (!State.isConnected || !cmd) return;
+
+            // 手动发送时也同步一次最新 UI 配置到持久化存储
+            const host = document.getElementById('tm-host')?.value.trim() || savedConfig.host;
+            const port = document.getElementById('tm-port')?.value.trim() || savedConfig.port;
+            savedConfig = { ...savedConfig, host, port, defaultCmd: cmd };
+            GM_setValue(SESSION_KEY, savedConfig);
+
             const payload = JSON.stringify({
                 sessionId: savedConfig.sessionId,
                 command: cmd
@@ -742,7 +774,9 @@
             const sel = {
                 'gemini.google.com': '.conversation-container, model-response, [id^="conversation-turn-"]',
                 'chatgpt.com': 'article[data-testid*="turn"]',
-                'claude.ai': '.claude-message, [data-testid="user-message"]'
+                'claude.ai': '.claude-message, [data-testid="user-message"]',
+                'copilot.microsoft.com': '[data-content$="-message"]',
+                'chat.qwen.ai': '.qwen-chat-message'
             }[domain] || '.conversation-container';
             return Array.from(document.querySelectorAll(sel));
         },
@@ -772,14 +806,7 @@
     function initObserver() {
         // 0. 滚动监听：更新 Minimap 光标位置
         const handleScroll = Utils.debounce(() => {
-            const containers = {
-                'gemini.google.com': '.conversation-container, model-response, [id^="conversation-turn-"], .chat-scrollable-container',
-                'chatgpt.com': 'article[data-testid*="turn"]',
-                'claude.ai': '.claude-message, [data-testid="user-message"]',
-                'chat.qwen.ai': '.message-item'
-            }[domain] || '.conversation-container';
-            const nodes = Array.from(document.querySelectorAll(containers));
-            if (nodes.length > 0) updateActiveItem(nodes);
+            Minimap.update();
         }, 100);
 
         window.addEventListener('scroll', handleScroll, { passive: true });
