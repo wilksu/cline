@@ -18,6 +18,7 @@ import {
 	RMTool,
 	RunTool,
 	SearchTool,
+	WavBrowserTool,
 } from "./tools"
 import type { ExecutionResult, ToolResult } from "./types"
 
@@ -33,6 +34,7 @@ const TOOL_CLASSES: Record<string, new (root: string) => BaseTool<object>> = {
 	mcp: McpTool as unknown as new (root: string) => BaseTool<object>,
 	rm: RMTool as unknown as new (root: string) => BaseTool<object>,
 	problems: ProblemsTool as unknown as new (root: string) => BaseTool<object>,
+	wav_browser: WavBrowserTool as unknown as new (root: string) => BaseTool<object>,
 }
 
 /**

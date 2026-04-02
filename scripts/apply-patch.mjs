@@ -80,6 +80,18 @@ const patchFiles = () => {
                     "default": false, 
                     "scope": "resource",
                     "description": "Auto-start WebSocket server" 
+                },
+                "cline.wsBridge.wavBrowserWs": { 
+                    "type": "string", 
+                    "default": "ws://localhost:3000", 
+                    "scope": "resource",
+                    "description": "WebSocket endpoint for WavBrowser (e.g. browserless)" 
+                },
+                "cline.wsBridge.wavBrowserSniff": { 
+                    "type": "boolean", 
+                    "default": true, 
+                    "scope": "resource",
+                    "description": "Automatically capture XHR/Fetch requests in WavBrowser" 
                 }
             });
         }

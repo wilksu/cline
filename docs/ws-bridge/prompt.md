@@ -91,7 +91,18 @@ You run in a **non-realtime, non-blocking** bridge. Each output is a "proposal" 
 
 ### 3. System Execution
 * `run: command` (Execute terminal command)
-* `browser: action [args]` (Browser automation)
+* `browser: action [args]` (Standard browser automation: click, type, scroll, navigate)
+* `wav_browser: action [args]` (High-performance Analysis Browser: launch, navigate, evaluate, sniff_results, close)
+
+---
+
+## 🕵️ WEB ANALYSIS STRATEGY (WavBrowser)
+
+When tasks involve web data extraction (e.g., downloading subtitles, API analysis), **ALWAYS** prioritize the following workflow:
+
+1.  **Sniff First**: Use `wav_browser: launch` followed by `Maps`. Then immediately call `wav_browser: sniff_results` to identify background API calls (XHR/Fetch).
+2.  **Direct Extraction**: Prefer `wav_browser: evaluate "return document.querySelector(...)"` or memory variable access over visual clicking.
+3.  **De-escalation**: Once an API endpoint or data structure is identified, **IMMEDIATELY** switch to `run: curl` or `run: python` scripts to finish the task. Do not stay in the browser longer than necessary.
 
 ---
 
